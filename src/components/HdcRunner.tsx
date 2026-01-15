@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Package, Upload, AppWindow, Trash, Settings, Info, Moon, Sun, PlusCircle, MinusCircle, Eraser } from 'lucide-react';
+import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Package, Upload, AppWindow, Trash, Settings, Info, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight } from 'lucide-react';
 import { Command } from '@tauri-apps/plugin-shell'; // V2 核心导入
 import { open, confirm as tauriConfirm } from '@tauri-apps/plugin-dialog'; // 引入 tauriConfirm
 import { generatePreviewCommand, generateUriParam } from '../utils/cmdHelper';
@@ -13,6 +13,8 @@ interface Device {
 interface AppInfo {
     name: string; // 包名
     isSystem: boolean;
+    details?: string; // 详细信息
+    isExpanded?: boolean; // 是否展开
 }
 
 interface KeyValueParam {
@@ -214,15 +216,17 @@ const HdcRunner = () => {
                     if (name) {
                         const isSystem = name.includes('android') || name.includes('huawei') || name.includes('ohos') || name.includes('system') || name.includes('com.example');
                         
-                        if (!apps.find(a => a.name === name)) {
-                            apps.push({ name, isSystem });
+                        // 过滤掉系统应用
+                        if (!isSystem && !apps.find(a => a.name === name)) {
+                            apps.push({ name, isSystem: false });
                         }
                     }
                 });
 
-                apps.sort((a, b) => (a.isSystem === b.isSystem ? 0 : a.isSystem ? 1 : -1));
+                // 排序
+                apps.sort((a, b) => a.name.localeCompare(b.name));
                 setAppList(apps);
-                setLogs(prev => [...prev, `Fetched ${apps.length} apps.`]);
+                setLogs(prev => [...prev, `Fetched ${apps.length} user apps.`]);
             } else {
                 setLogs(prev => [...prev, `Failed to fetch apps: ${output.stderr}`]);
             }
@@ -230,6 +234,47 @@ const HdcRunner = () => {
             setLogs(prev => [...prev, `Error fetching apps: ${error}`]);
         } finally {
             setIsLoadingApps(false);
+        }
+    };
+
+    // 获取应用详情
+    const fetchAppDetails = async (pkgName: string, index: number) => {
+        if (!selectedDeviceId) return;
+        
+        // 如果已经展开且有详情，则只切换展开状态
+        if (appList[index].details) {
+            const newAppList = [...appList];
+            newAppList[index].isExpanded = !newAppList[index].isExpanded;
+            setAppList(newAppList);
+            return;
+        }
+
+        try {
+            // 尝试 bm dump -n <pkgName>
+            const cmd = Command.create('hdc', ['-t', selectedDeviceId, 'shell', 'bm', 'dump', '-n', pkgName]);
+            const output = await cmd.execute();
+            
+            let details = '';
+            if (output.code === 0) {
+                details = output.stdout;
+            } else {
+                // 尝试 dumpsys package <pkgName> (Android 兼容)
+                const cmd2 = Command.create('hdc', ['-t', selectedDeviceId, 'shell', 'dumpsys', 'package', pkgName]);
+                const output2 = await cmd2.execute();
+                if (output2.code === 0) {
+                    details = output2.stdout;
+                } else {
+                    details = 'Failed to fetch details.';
+                }
+            }
+
+            const newAppList = [...appList];
+            newAppList[index].details = details;
+            newAppList[index].isExpanded = true;
+            setAppList(newAppList);
+
+        } catch (error) {
+            console.error(error);
         }
     };
 
@@ -282,14 +327,27 @@ const HdcRunner = () => {
             let cmd = Command.create('hdc', ['-t', selectedDeviceId, 'shell', 'bm', 'clean', '-n', bundleName, '-d']);
             let output = await cmd.execute();
             
-            if (output.code !== 0 || output.stdout.includes('error') || output.stdout.includes('fail')) {
-                 setLogs(prev => [...prev, `bm clean failed, trying pm clear...`]);
+            // 检查 bm clean 是否成功
+            // 注意：bm clean 有时即使成功也可能没有输出，或者输出包含 Success
+            // 如果失败，通常会包含 error 或 fail
+            // 如果 bm clean 失败，尝试 pm clear
+            if (output.code !== 0 || output.stdout.toLowerCase().includes('error') || output.stdout.toLowerCase().includes('fail')) {
+                 setLogs(prev => [...prev, `bm clean failed (${output.stdout.trim()}), trying pm clear...`]);
+                 
+                 // 尝试 pm clear
                  cmd = Command.create('hdc', ['-t', selectedDeviceId, 'shell', 'pm', 'clear', bundleName]);
                  output = await cmd.execute();
+                 
+                 // 检查 pm clear 结果
+                 if (output.code !== 0 || output.stdout.toLowerCase().includes('inaccessible') || output.stdout.toLowerCase().includes('not found')) {
+                     setLogs(prev => [...prev, `pm clear failed: ${output.stdout}`]);
+                     setLogs(prev => [...prev, `Error: Neither 'bm clean' nor 'pm clear' worked. Please check device compatibility.`]);
+                     return;
+                 }
             }
             
             setLogs(prev => [...prev, output.stdout]);
-            if (output.code === 0 && !output.stdout.includes('Error')) {
+            if (output.code === 0 && !output.stdout.toLowerCase().includes('error')) {
                 setLogs(prev => [...prev, 'Data cleared successfully.']);
             }
 
@@ -714,38 +772,45 @@ const HdcRunner = () => {
                                             <thead className={`${isDark ? 'bg-gray-900' : 'bg-gray-100'} ${textSub} font-medium border-b ${borderCol} sticky top-0`}>
                                                 <tr>
                                                     <th className="p-3 pl-4">Package Name</th>
-                                                    <th className="p-3">Type</th>
                                                     <th className="p-3 text-right pr-4">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody className={`divide-y ${borderCol}`}>
                                                 {appList.map((app, i) => (
-                                                    <tr key={i} className={`hover:bg-gray-500/10 group`}>
-                                                        <td className="p-3 pl-4 font-mono text-sm">
-                                                            <div className={textMain}>{app.name}</div>
-                                                        </td>
-                                                        <td className="p-3">
-                                                            <span className={`text-xs px-2 py-0.5 rounded ${app.isSystem ? 'bg-gray-500/20 text-gray-500' : 'bg-blue-500/20 text-blue-500'}`}>
-                                                                {app.isSystem ? 'System' : 'User'}
-                                                            </span>
-                                                        </td>
-                                                        <td className="p-3 text-right pr-4">
-                                                            {!app.isSystem && (
-                                                                <div className="flex justify-end space-x-2">
+                                                    <React.Fragment key={i}>
+                                                        <tr 
+                                                            className={`hover:bg-gray-500/10 group cursor-pointer ${app.isExpanded ? 'bg-gray-500/5' : ''}`}
+                                                            onClick={() => fetchAppDetails(app.name, i)}
+                                                        >
+                                                            <td className="p-3 pl-4 font-mono text-sm flex items-center gap-2">
+                                                                <span className={textSub}>
+                                                                    {app.isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                                                </span>
+                                                                <div className={textMain}>{app.name}</div>
+                                                            </td>
+                                                            <td className="p-3 text-right pr-4">
+                                                                <div className="flex justify-end space-x-2" onClick={e => e.stopPropagation()}>
                                                                     <button onClick={() => uninstallApp(app.name)} className="p-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-500 rounded" title="Uninstall">
                                                                         <Trash size={14}/>
                                                                     </button>
                                                                 </div>
-                                                            )}
-                                                        </td>
-                                                    </tr>
+                                                            </td>
+                                                        </tr>
+                                                        {app.isExpanded && (
+                                                            <tr>
+                                                                <td colSpan={2} className={`p-4 ${isDark ? 'bg-black/20' : 'bg-gray-50'} text-xs font-mono ${textSub} whitespace-pre-wrap break-all`}>
+                                                                    {app.details || 'Loading details...'}
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </React.Fragment>
                                                 ))}
                                             </tbody>
                                         </table>
                                     </div>
                                 )}
                                 <div className={`p-2 ${isDark ? 'bg-gray-900' : 'bg-gray-100'} border-t ${borderCol} text-xs ${textSub} text-center`}>
-                                    Total: {appList.length} apps
+                                    Total: {appList.length} user apps
                                 </div>
                             </div>
                         </div>
@@ -768,7 +833,7 @@ const HdcRunner = () => {
                                     </div>
                                     <div className="flex justify-between">
                                         <span className={textSub}>Contact</span>
-                                        <span className={`${textMain} font-medium`}>vx:pengliliu</span>
+                                        <span className={`${textMain} font-medium`}>WeChat：pengliliu</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className={textSub}>Version</span>
