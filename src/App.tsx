@@ -1,4 +1,3 @@
-import React from "react";
 import HdcRunner from "./components/HdcRunner";
 
 function App() {
