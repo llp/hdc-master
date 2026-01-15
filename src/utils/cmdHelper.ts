@@ -5,6 +5,7 @@ export interface HdcParams {
     uri: string;
     isDebug: boolean;
     extra: string;
+    entry?: string; // 新增 entry 参数
 }
 
 /**
@@ -17,6 +18,7 @@ export const generateUriParam = (params: HdcParams): string => {
     // 核心：对 uri 进行编码，防止 & 等符号截断命令
     if (params.uri) queryParts.push(`uri=${encodeURIComponent(params.uri)}`);
     if (params.isDebug) queryParts.push('debug=true');
+    if (params.entry) queryParts.push(`entry=${params.entry}`); // 处理 entry
 
     let fullUri = `esapp://${params.pkgName}/${params.version}`;
     if (queryParts.length > 0) {
