@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Package, Upload, AppWindow, Trash, Settings, Info, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight } from 'lucide-react';
+import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Upload, AppWindow, Trash, Settings, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight } from 'lucide-react';
 import { Command } from '@tauri-apps/plugin-shell'; // V2 核心导入
 import { open, confirm as tauriConfirm } from '@tauri-apps/plugin-dialog'; // 引入 tauriConfirm
 import { generatePreviewCommand, generateUriParam } from '../utils/cmdHelper';
@@ -118,49 +118,37 @@ const HdcRunner = () => {
 
     // --- 设备管理逻辑 ---
 
+    // 保存成功的命令名称，避免每次都轮询
+    const [workingCmd, setWorkingCmd] = useState<string>('');
+
+    const getHdcCommand = (cmdName: string, args: string[]) => {
+        if (cmdName === 'hdc-sidecar') {
+            return Command.sidecar('hdc', args);
+        }
+        return Command.create(cmdName, args);
+    };
+
     const refreshDevices = async () => {
         try {
             setLogs(prev => [...prev, '> Listing devices...']);
-            // 尝试多个命令名称，以防 PATH 问题
-            // 优先尝试 'hdc' (如果 PATH 正确)
-            // 其次尝试绝对路径 (如果 capabilities 配置了)
-            // 最后尝试 sidecar (如果配置了)
             
-            // 这里我们简化逻辑：直接调用 'hdc'，依赖 capabilities 中的配置来解析
-            // 如果 capabilities 配置了多个同名 'hdc' 但 cmd 不同，Tauri 会如何选择？
-            // Tauri v2 的权限系统是基于 identifier 的。我们在 capabilities 中配置了多个 allow execute，
-            // 它们的 name 都是 'hdc' 吗？不，name 必须唯一对应一个 cmd。
-            // 让我们检查 capabilities/default.json。
-            // 我之前修改了 capabilities，添加了 hdc, hdc-local, hdc-brew, hdc-sidecar。
-            
-            // 我们需要依次尝试这些命令
-            const commandsToTry = ['hdc', 'hdc-local', 'hdc-brew', 'hdc-sidecar'];
+            // 优先使用已知工作的命令
+            let commandsToTry = workingCmd ? [workingCmd] : ['hdc-sidecar', 'hdc-deveco', 'hdc', 'hdc-local', 'hdc-brew'];
             
             let output: any = null;
             let successCmd = '';
 
             for (const cmdName of commandsToTry) {
                 try {
-                    // 注意：Command.create 的第一个参数必须匹配 capabilities 中的 name
-                    // 如果是 sidecar，需要用 Command.sidecar
-                    let command;
-                    if (cmdName === 'hdc-sidecar') {
-                        // 只有当确实配置了 sidecar 时才尝试，否则会报错
-                        // 这里先跳过 sidecar，除非用户明确打包了
-                        continue; 
-                        // command = Command.sidecar('bin/hdc', ['list', 'targets']); 
-                    } else {
-                        command = Command.create(cmdName, ['list', 'targets']);
-                    }
-                    
+                    const command = getHdcCommand(cmdName, ['list', 'targets']);
                     const res = await command.execute();
                     if (res.code === 0) {
                         output = res;
                         successCmd = cmdName;
-                        break; // 成功则退出循环
+                        if (!workingCmd) setWorkingCmd(cmdName); // 缓存成功的命令
+                        break; 
                     }
                 } catch (e) {
-                    // 忽略错误，继续尝试下一个
                     // console.log(`Failed to execute ${cmdName}:`, e);
                 }
             }
@@ -180,6 +168,8 @@ const HdcRunner = () => {
                 setLogs(prev => [...prev, `Found ${foundDevices.length} devices (via ${successCmd}).`]);
             } else {
                 setLogs(prev => [...prev, `Error listing devices: No hdc command found or execution failed.`]);
+                // 如果失败了，清除缓存，下次重试所有
+                if (workingCmd) setWorkingCmd('');
             }
         } catch (error) {
             setLogs(prev => [...prev, `Error listing devices: ${error}`]);
@@ -190,23 +180,16 @@ const HdcRunner = () => {
         if (!ip) return;
         try {
             setLogs(prev => [...prev, `> Connecting to ${ip}...`]);
-            // 同样需要尝试多个命令，这里简化，假设 refreshDevices 已经找到了可用的命令
-            // 为了简单，我们这里只尝试 'hdc'，如果失败用户可能需要检查环境
-            // 或者我们可以保存 refreshDevices 中成功的 cmdName 到状态中
             
-            // 暂时先用 'hdc'，如果 capabilities 配置正确，它应该能映射到系统路径
-            // 如果不行，我们可能需要一个全局状态来存储 "可用命令名"
-            
-            // 重新尝试所有可能的命令
-             const commandsToTry = ['hdc', 'hdc-local', 'hdc-brew'];
-             let success = false;
+            let commandsToTry = workingCmd ? [workingCmd] : ['hdc-sidecar', 'hdc-deveco', 'hdc', 'hdc-local', 'hdc-brew'];
+            let success = false;
 
              for (const cmdName of commandsToTry) {
                  try {
-                    const tmodeCmd = Command.create(cmdName, ['tmode', 'port', '5555']);
+                    const tmodeCmd = getHdcCommand(cmdName, ['tmode', 'port', '5555']);
                     await tmodeCmd.execute();
                     
-                    const connectCmd = Command.create(cmdName, ['tconn', ip]);
+                    const connectCmd = getHdcCommand(cmdName, ['tconn', ip]);
                     const output = await connectCmd.execute();
                     
                     if (output.code === 0) {
@@ -217,6 +200,7 @@ const HdcRunner = () => {
                             setIsAddingDevice(false);
                         }
                         success = true;
+                        if (!workingCmd) setWorkingCmd(cmdName);
                         break;
                     }
                  } catch (e) {}
@@ -249,42 +233,37 @@ const HdcRunner = () => {
         setIsLoadingApps(true);
         setLogs(prev => [...prev, '> Fetching app list...']);
         try {
-            // 尝试多种命令组合以兼容不同设备
-            // 1. 尝试 bm dump -a (OpenHarmony 标准)
             let rawOutput = '';
+            let commandsToTry = workingCmd ? [workingCmd] : ['hdc-sidecar', 'hdc-deveco', 'hdc', 'hdc-local', 'hdc-brew'];
             
-            // 同样需要尝试多个 hdc 命令
-            const commandsToTry = ['hdc', 'hdc-local', 'hdc-brew'];
-            let hdcCmd = 'hdc';
-            
-            // 简单的探测逻辑：谁能跑通 list targets 就用谁
-            // 这里为了不阻塞 UI，我们简单地依次尝试
-            // 更好的做法是在组件加载时探测一次并保存
-            
-            // 临时逻辑：依次尝试
             let output: any = null;
-            for (const cmd of commandsToTry) {
+            // let currentCmd = '';
+
+            // 1. 尝试 bm dump
+            for (const cmdName of commandsToTry) {
                 try {
-                    const c = Command.create(cmd, ['-t', selectedDeviceId, 'shell', 'bm', 'dump', '-a']);
+                    const c = getHdcCommand(cmdName, ['-t', selectedDeviceId, 'shell', 'bm', 'dump', '-a']);
                     const res = await c.execute();
                     if (res.code === 0) {
                         output = res;
-                        hdcCmd = cmd;
+                        // currentCmd = cmdName;
+                        if (!workingCmd) setWorkingCmd(cmdName);
                         break;
                     }
                 } catch(e) {}
             }
 
-            // 如果 bm dump 失败，尝试 pm list
+            // 2. 如果 bm dump 失败，尝试 pm list
             if (!output || output.code !== 0 || !output.stdout) {
                  setLogs(prev => [...prev, 'bm dump failed, trying pm list packages...']);
-                 for (const cmd of commandsToTry) {
+                 for (const cmdName of commandsToTry) {
                     try {
-                        const c = Command.create(cmd, ['-t', selectedDeviceId, 'shell', 'pm', 'list', 'packages']);
+                        const c = getHdcCommand(cmdName, ['-t', selectedDeviceId, 'shell', 'pm', 'list', 'packages']);
                         const res = await c.execute();
                         if (res.code === 0) {
                             output = res;
-                            hdcCmd = cmd;
+                            // currentCmd = cmdName;
+                            if (!workingCmd) setWorkingCmd(cmdName);
                             break;
                         }
                     } catch(e) {}
@@ -337,7 +316,6 @@ const HdcRunner = () => {
     const fetchAppDetails = async (pkgName: string, index: number) => {
         if (!selectedDeviceId) return;
         
-        // 如果已经展开且有详情，则只切换展开状态
         if (appList[index].details) {
             const newAppList = [...appList];
             newAppList[index].isExpanded = !newAppList[index].isExpanded;
@@ -346,8 +324,9 @@ const HdcRunner = () => {
         }
 
         try {
+            let cmdName = workingCmd || 'hdc';
             // 尝试 bm dump -n <pkgName>
-            const cmd = Command.create('hdc', ['-t', selectedDeviceId, 'shell', 'bm', 'dump', '-n', pkgName]);
+            const cmd = getHdcCommand(cmdName, ['-t', selectedDeviceId, 'shell', 'bm', 'dump', '-n', pkgName]);
             const output = await cmd.execute();
             
             let details = '';
@@ -355,7 +334,7 @@ const HdcRunner = () => {
                 details = output.stdout;
             } else {
                 // 尝试 dumpsys package <pkgName> (Android 兼容)
-                const cmd2 = Command.create('hdc', ['-t', selectedDeviceId, 'shell', 'dumpsys', 'package', pkgName]);
+                const cmd2 = getHdcCommand(cmdName, ['-t', selectedDeviceId, 'shell', 'dumpsys', 'package', pkgName]);
                 const output2 = await cmd2.execute();
                 if (output2.code === 0) {
                     details = output2.stdout;
@@ -382,7 +361,6 @@ const HdcRunner = () => {
     }, [activeTab, selectedDeviceId]);
 
     const uninstallApp = async (pkg: string) => {
-        // 使用 Tauri 的 confirm 对话框，它是异步的，会等待用户点击
         const confirmed = await tauriConfirm(`Are you sure you want to uninstall ${pkg}?`, { title: 'Confirm Uninstall', kind: 'warning' });
         
         if (!confirmed) {
@@ -392,7 +370,8 @@ const HdcRunner = () => {
 
         try {
             setLogs(prev => [...prev, `> Uninstalling ${pkg}...`]);
-            const cmd = Command.create('hdc', ['-t', selectedDeviceId, 'shell', 'bm', 'uninstall', '-n', pkg]);
+            let cmdName = workingCmd || 'hdc';
+            const cmd = getHdcCommand(cmdName, ['-t', selectedDeviceId, 'shell', 'bm', 'uninstall', '-n', pkg]);
             const output = await cmd.execute();
             setLogs(prev => [...prev, output.stdout]);
             if (output.stdout.includes('Success') || output.code === 0) {
@@ -410,31 +389,24 @@ const HdcRunner = () => {
             return;
         }
         
-        // 确认对话框
         const confirmed = await tauriConfirm(`Are you sure you want to clear data for ${bundleName}?`, { title: 'Confirm Clear Data', kind: 'warning' });
         if (!confirmed) return;
 
         try {
             setLogs(prev => [...prev, `> Clearing data for ${bundleName}...`]);
-            // 尝试 bm clean -n <bundleName> -d (OpenHarmony)
-            // 或者 pm clear <bundleName> (Android/HarmonyOS 兼容)
+            let cmdName = workingCmd || 'hdc';
             
             // 优先尝试 bm clean
-            let cmd = Command.create('hdc', ['-t', selectedDeviceId, 'shell', 'bm', 'clean', '-n', bundleName, '-d']);
+            let cmd = getHdcCommand(cmdName, ['-t', selectedDeviceId, 'shell', 'bm', 'clean', '-n', bundleName, '-d']);
             let output = await cmd.execute();
             
-            // 检查 bm clean 是否成功
-            // 注意：bm clean 有时即使成功也可能没有输出，或者输出包含 Success
-            // 如果失败，通常会包含 error 或 fail
-            // 如果 bm clean 失败，尝试 pm clear
             if (output.code !== 0 || output.stdout.toLowerCase().includes('error') || output.stdout.toLowerCase().includes('fail')) {
                  setLogs(prev => [...prev, `bm clean failed (${output.stdout.trim()}), trying pm clear...`]);
                  
                  // 尝试 pm clear
-                 cmd = Command.create('hdc', ['-t', selectedDeviceId, 'shell', 'pm', 'clear', bundleName]);
+                 cmd = getHdcCommand(cmdName, ['-t', selectedDeviceId, 'shell', 'pm', 'clear', bundleName]);
                  output = await cmd.execute();
                  
-                 // 检查 pm clear 结果
                  if (output.code !== 0 || output.stdout.toLowerCase().includes('inaccessible') || output.stdout.toLowerCase().includes('not found')) {
                      setLogs(prev => [...prev, `pm clear failed: ${output.stdout}`]);
                      setLogs(prev => [...prev, `Error: Neither 'bm clean' nor 'pm clear' worked. Please check device compatibility.`]);
@@ -472,12 +444,13 @@ const HdcRunner = () => {
                 const filePath = selected;
                 setLogs(prev => [...prev, `> Installing ${filePath}...`]);
                 
-                const cmd = Command.create('hdc', ['-t', selectedDeviceId, 'install', '-r', filePath]);
+                let cmdName = workingCmd || 'hdc';
+                const cmd = getHdcCommand(cmdName, ['-t', selectedDeviceId, 'install', '-r', filePath]);
                 
                 cmd.stdout.on('data', line => setLogs(prev => [...prev, line]));
                 cmd.stderr.on('data', line => setLogs(prev => [...prev, `ERR: ${line}`]));
                 
-                const child = await cmd.spawn();
+                await cmd.spawn();
             }
         } catch (e) {
             setLogs(prev => [...prev, `Install failed: ${e}`]);
@@ -500,7 +473,8 @@ const HdcRunner = () => {
             });
 
             // 2. 调用 hdc
-            const command = Command.create('hdc', [
+            let cmdName = workingCmd || 'hdc';
+            const command = getHdcCommand(cmdName, [
                 '-t', selectedDeviceId,
                 'shell',
                 'aa', 'start',

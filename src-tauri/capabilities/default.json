@@ -16,25 +16,13 @@
           "name": "hdc",
           "cmd": "hdc",
           "args": true,
-          "sidecar": false
-        },
-        {
-          "name": "hdc-local",
-          "cmd": "/usr/local/bin/hdc",
-          "args": true,
-          "sidecar": false
-        },
-        {
-          "name": "hdc-brew",
-          "cmd": "/opt/homebrew/bin/hdc",
-          "args": true,
-          "sidecar": false
-        },
-        {
-          "name": "hdc-sidecar",
-          "cmd": "hdc",
-          "args": true,
           "sidecar": true
+        },
+        {
+          "name": "hdc-deveco",
+          "cmd": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc",
+          "args": true,
+          "sidecar": false
         }
       ]
     },
@@ -45,25 +33,13 @@
           "name": "hdc",
           "cmd": "hdc",
           "args": true,
-          "sidecar": false
-        },
-        {
-          "name": "hdc-local",
-          "cmd": "/usr/local/bin/hdc",
-          "args": true,
-          "sidecar": false
-        },
-        {
-          "name": "hdc-brew",
-          "cmd": "/opt/homebrew/bin/hdc",
-          "args": true,
-          "sidecar": false
-        },
-        {
-          "name": "hdc-sidecar",
-          "cmd": "hdc",
-          "args": true,
           "sidecar": true
+        },
+        {
+          "name": "hdc-deveco",
+          "cmd": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc",
+          "args": true,
+          "sidecar": false
         }
       ]
     },
