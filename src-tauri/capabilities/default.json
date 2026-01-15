@@ -14,21 +14,27 @@
       "allow": [
         {
           "name": "hdc",
+          "cmd": "hdc",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "hdc-local",
           "cmd": "/usr/local/bin/hdc",
           "args": true,
           "sidecar": false
         },
         {
-          "name": "hdc-home",
+          "name": "hdc-brew",
           "cmd": "/opt/homebrew/bin/hdc",
           "args": true,
           "sidecar": false
         },
         {
-          "name": "hdc-env",
+          "name": "hdc-sidecar",
           "cmd": "hdc",
           "args": true,
-          "sidecar": false
+          "sidecar": true
         }
       ]
     },
@@ -37,21 +43,27 @@
       "allow": [
         {
           "name": "hdc",
+          "cmd": "hdc",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "hdc-local",
           "cmd": "/usr/local/bin/hdc",
           "args": true,
           "sidecar": false
         },
         {
-          "name": "hdc-home",
+          "name": "hdc-brew",
           "cmd": "/opt/homebrew/bin/hdc",
           "args": true,
           "sidecar": false
         },
         {
-          "name": "hdc-env",
+          "name": "hdc-sidecar",
           "cmd": "hdc",
           "args": true,
-          "sidecar": false
+          "sidecar": true
         }
       ]
     },
