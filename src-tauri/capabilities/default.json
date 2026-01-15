@@ -17,6 +17,17 @@
           "sidecar": false
         }
       ]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "hdc",
+          "cmd": "hdc",
+          "args": true,
+          "sidecar": false
+        }
+      ]
     }
   ]
 }
