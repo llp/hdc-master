@@ -5,7 +5,8 @@ export interface HdcParams {
     uri: string;
     isDebug: boolean;
     extra: string;
-    entry?: string; // 新增 entry 参数
+    entry?: string;
+    paramsJson?: string; // 新增 params 参数 (JSON 字符串)
 }
 
 /**
@@ -14,11 +15,22 @@ export interface HdcParams {
 export const generateUriParam = (params: HdcParams): string => {
     const queryParts: string[] = [];
 
-    if (params.extra) queryParts.push(params.extra);
-    // 核心：对 uri 进行编码，防止 & 等符号截断命令
+    // 1. entry
+    if (params.entry) queryParts.push(`entry=${params.entry}`);
+    
+    // 2. uri (需要编码)
     if (params.uri) queryParts.push(`uri=${encodeURIComponent(params.uri)}`);
+    
+    // 3. params (JSON 对象，需要编码)
+    if (params.paramsJson && params.paramsJson !== '{}') {
+        queryParts.push(`params=${encodeURIComponent(params.paramsJson)}`);
+    }
+
+    // 4. debug
     if (params.isDebug) queryParts.push('debug=true');
-    if (params.entry) queryParts.push(`entry=${params.entry}`); // 处理 entry
+
+    // 5. extra (from=cmd 等)
+    if (params.extra) queryParts.push(params.extra);
 
     let fullUri = `esapp://${params.pkgName}/${params.version}`;
     if (queryParts.length > 0) {
