@@ -381,7 +381,7 @@ const HdcRunner = () => {
                 cmd.stdout.on('data', line => setLogs(prev => [...prev, line]));
                 cmd.stderr.on('data', line => setLogs(prev => [...prev, `ERR: ${line}`]));
                 
-                const child = await cmd.spawn();
+                await cmd.spawn();
             }
         } catch (e) {
             setLogs(prev => [...prev, `Install failed: ${e}`]);
