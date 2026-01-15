@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Package, Upload, AppWindow, Trash, Settings, Info, Moon, Sun, PlusCircle, MinusCircle } from 'lucide-react';
+import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Package, Upload, AppWindow, Trash, Settings, Info, Moon, Sun, PlusCircle, MinusCircle, Eraser } from 'lucide-react';
 import { Command } from '@tauri-apps/plugin-shell'; // V2 核心导入
-import { open } from '@tauri-apps/plugin-dialog';
+import { open, confirm as tauriConfirm } from '@tauri-apps/plugin-dialog'; // 引入 tauriConfirm
 import { generatePreviewCommand, generateUriParam } from '../utils/cmdHelper';
 
 interface Device {
@@ -12,7 +12,6 @@ interface Device {
 
 interface AppInfo {
     name: string; // 包名
-    label?: string; // 应用名称 (如果能获取到)
     isSystem: boolean;
 }
 
@@ -215,14 +214,8 @@ const HdcRunner = () => {
                     if (name) {
                         const isSystem = name.includes('android') || name.includes('huawei') || name.includes('ohos') || name.includes('system') || name.includes('com.example');
                         
-                        // 尝试推断一个简单的 Label (通常没有 root 权限很难获取真实 Label)
-                        // 这里简单取包名的最后一段并大写首字母
-                        const parts = name.split('.');
-                        let label = parts[parts.length - 1];
-                        label = label.charAt(0).toUpperCase() + label.slice(1);
-
                         if (!apps.find(a => a.name === name)) {
-                            apps.push({ name, label, isSystem });
+                            apps.push({ name, isSystem });
                         }
                     }
                 });
@@ -248,7 +241,14 @@ const HdcRunner = () => {
     }, [activeTab, selectedDeviceId]);
 
     const uninstallApp = async (pkg: string) => {
-        if (!confirm(`Are you sure you want to uninstall ${pkg}?`)) return;
+        // 使用 Tauri 的 confirm 对话框，它是异步的，会等待用户点击
+        const confirmed = await tauriConfirm(`Are you sure you want to uninstall ${pkg}?`, { title: 'Confirm Uninstall', kind: 'warning' });
+        
+        if (!confirmed) {
+            setLogs(prev => [...prev, `> Uninstall cancelled for ${pkg}`]);
+            return;
+        }
+
         try {
             setLogs(prev => [...prev, `> Uninstalling ${pkg}...`]);
             const cmd = Command.create('hdc', ['-t', selectedDeviceId, 'shell', 'bm', 'uninstall', '-n', pkg]);
@@ -262,14 +262,39 @@ const HdcRunner = () => {
         }
     };
 
-    const launchApp = async (pkg: string) => {
+    // --- 清除应用数据逻辑 ---
+    const clearAppData = async () => {
+        if (!selectedDeviceId) {
+            setLogs(prev => [...prev, 'Error: No device selected.']);
+            return;
+        }
+        
+        // 确认对话框
+        const confirmed = await tauriConfirm(`Are you sure you want to clear data for ${bundleName}?`, { title: 'Confirm Clear Data', kind: 'warning' });
+        if (!confirmed) return;
+
         try {
-            setLogs(prev => [...prev, `> Launching ${pkg}...`]);
-            const cmd = Command.create('hdc', ['-t', selectedDeviceId, 'shell', 'aa', 'start', '-b', pkg]); 
-            const output = await cmd.execute();
+            setLogs(prev => [...prev, `> Clearing data for ${bundleName}...`]);
+            // 尝试 bm clean -n <bundleName> -d (OpenHarmony)
+            // 或者 pm clear <bundleName> (Android/HarmonyOS 兼容)
+            
+            // 优先尝试 bm clean
+            let cmd = Command.create('hdc', ['-t', selectedDeviceId, 'shell', 'bm', 'clean', '-n', bundleName, '-d']);
+            let output = await cmd.execute();
+            
+            if (output.code !== 0 || output.stdout.includes('error') || output.stdout.includes('fail')) {
+                 setLogs(prev => [...prev, `bm clean failed, trying pm clear...`]);
+                 cmd = Command.create('hdc', ['-t', selectedDeviceId, 'shell', 'pm', 'clear', bundleName]);
+                 output = await cmd.execute();
+            }
+            
             setLogs(prev => [...prev, output.stdout]);
+            if (output.code === 0 && !output.stdout.includes('Error')) {
+                setLogs(prev => [...prev, 'Data cleared successfully.']);
+            }
+
         } catch (e) {
-            setLogs(prev => [...prev, `Launch failed: ${e}`]);
+            setLogs(prev => [...prev, `Clear data failed: ${e}`]);
         }
     };
 
@@ -444,25 +469,29 @@ const HdcRunner = () => {
 
                 {/* 顶部栏 - 设备管理 & 安装 HAP (公共) */}
                 <div className={`h-16 border-b ${borderCol} flex items-center px-6 justify-between ${bgHeader} transition-colors duration-300`}>
-                    <div className="flex items-center space-x-3">
-                        <Smartphone className={textSub} size={20} />
+                    <div className="flex items-center space-x-3 flex-1 min-w-0"> {/* flex-1 min-w-0 防止挤压 */}
+                        <Smartphone className={`${textSub} flex-shrink-0`} size={20} />
                         
                         {/* 设备选择 */}
-                        <div className="relative group">
+                        <div className="relative group flex-1 max-w-md"> {/* 限制最大宽度 */}
                             <select 
                                 value={selectedDeviceId} 
                                 onChange={(e) => setSelectedDeviceId(e.target.value)}
-                                className={`${isDark ? 'bg-gray-800' : 'bg-gray-100'} border ${isDark ? 'border-gray-700' : 'border-gray-300'} text-sm rounded px-3 py-1.5 outline-none min-w-[180px] appearance-none cursor-pointer`}
+                                className={`w-full ${isDark ? 'bg-gray-800' : 'bg-gray-100'} border ${isDark ? 'border-gray-700' : 'border-gray-300'} text-sm rounded px-3 py-1.5 pr-8 outline-none appearance-none cursor-pointer truncate`}
                             >
                                 {devices.length === 0 && <option value="">No devices found</option>}
                                 {devices.map(d => (
                                     <option key={d.id} value={d.id}>{d.name} ({d.status})</option>
                                 ))}
                             </select>
+                            {/* 下拉箭头 */}
+                            <div className="absolute right-8 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </div>
                             {selectedDeviceId && (
                                 <button 
                                     onClick={() => disconnectDevice(selectedDeviceId)}
-                                    className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-500 hover:text-red-400"
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-red-400"
                                     title="Disconnect / Refresh"
                                 >
                                     <Unlink size={14} />
@@ -471,7 +500,7 @@ const HdcRunner = () => {
                         </div>
 
                         {/* 添加设备 */}
-                        <div className="relative flex items-center">
+                        <div className="relative flex items-center flex-shrink-0">
                             {isAddingDevice ? (
                                 <div className={`flex items-center ${isDark ? 'bg-gray-800' : 'bg-gray-100'} rounded border ${isDark ? 'border-gray-700' : 'border-gray-300'} overflow-hidden`}>
                                     <input 
@@ -496,13 +525,13 @@ const HdcRunner = () => {
                             )}
                         </div>
 
-                        <button onClick={refreshDevices} className={`p-1.5 hover:bg-gray-800/10 rounded-full ${textSub}`} title="Refresh Devices">
+                        <button onClick={refreshDevices} className={`p-1.5 hover:bg-gray-800/10 rounded-full ${textSub} flex-shrink-0`} title="Refresh Devices">
                             <RefreshCw size={16} />
                         </button>
                     </div>
 
                     {/* 安装 HAP 区域 */}
-                    <div className={`flex items-center space-x-2 border-l ${borderCol} pl-4 ml-4`}>
+                    <div className={`flex items-center space-x-2 border-l ${borderCol} pl-4 ml-4 flex-shrink-0`}>
                         <button 
                             onClick={installHap}
                             className={`flex items-center space-x-2 px-3 py-1.5 ${isDark ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-200 hover:bg-gray-300'} rounded text-sm ${textSub} transition`}
@@ -520,7 +549,17 @@ const HdcRunner = () => {
                         <div className="absolute inset-0 flex flex-col overflow-y-auto p-6 space-y-6">
                             {/* Runtime 配置 */}
                             <div className={`${bgCard} p-5 rounded-xl border ${borderCol} shadow-sm`}>
-                                <h3 className={`text-xs font-bold ${textSub} uppercase tracking-wider mb-4`}>Runtime Config</h3>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className={`text-xs font-bold ${textSub} uppercase tracking-wider`}>Runtime Config</h3>
+                                    {/* 清除数据按钮 */}
+                                    <button 
+                                        onClick={clearAppData}
+                                        className={`flex items-center space-x-1 px-2 py-1 ${isDark ? 'bg-red-900/20 hover:bg-red-900/40' : 'bg-red-100 hover:bg-red-200'} text-red-500 rounded text-xs transition`}
+                                        title="Clear App Data (pm clear / bm clean)"
+                                    >
+                                        <Eraser size={12} /> <span>Clear Data</span>
+                                    </button>
+                                </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-1">
                                         <label className={`text-xs ${textSub} ml-1`}>Bundle Name (-b)</label>
@@ -674,7 +713,7 @@ const HdcRunner = () => {
                                         <table className="w-full text-left text-sm">
                                             <thead className={`${isDark ? 'bg-gray-900' : 'bg-gray-100'} ${textSub} font-medium border-b ${borderCol} sticky top-0`}>
                                                 <tr>
-                                                    <th className="p-3 pl-4">App Name / Package</th>
+                                                    <th className="p-3 pl-4">Package Name</th>
                                                     <th className="p-3">Type</th>
                                                     <th className="p-3 text-right pr-4">Actions</th>
                                                 </tr>
@@ -682,9 +721,8 @@ const HdcRunner = () => {
                                             <tbody className={`divide-y ${borderCol}`}>
                                                 {appList.map((app, i) => (
                                                     <tr key={i} className={`hover:bg-gray-500/10 group`}>
-                                                        <td className="p-3 pl-4">
-                                                            <div className={`font-medium ${textMain}`}>{app.label}</div>
-                                                            <div className={`text-xs ${textSub} font-mono`}>{app.name}</div>
+                                                        <td className="p-3 pl-4 font-mono text-sm">
+                                                            <div className={textMain}>{app.name}</div>
                                                         </td>
                                                         <td className="p-3">
                                                             <span className={`text-xs px-2 py-0.5 rounded ${app.isSystem ? 'bg-gray-500/20 text-gray-500' : 'bg-blue-500/20 text-blue-500'}`}>
@@ -694,9 +732,6 @@ const HdcRunner = () => {
                                                         <td className="p-3 text-right pr-4">
                                                             {!app.isSystem && (
                                                                 <div className="flex justify-end space-x-2">
-                                                                    <button onClick={() => launchApp(app.name)} className="p-1.5 bg-green-500/20 hover:bg-green-500/40 text-green-500 rounded" title="Launch">
-                                                                        <Play size={14}/>
-                                                                    </button>
                                                                     <button onClick={() => uninstallApp(app.name)} className="p-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-500 rounded" title="Uninstall">
                                                                         <Trash size={14}/>
                                                                     </button>
