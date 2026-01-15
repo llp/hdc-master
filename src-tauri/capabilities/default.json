@@ -14,6 +14,18 @@
       "allow": [
         {
           "name": "hdc",
+          "cmd": "/usr/local/bin/hdc",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "hdc-home",
+          "cmd": "/opt/homebrew/bin/hdc",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "hdc-env",
           "cmd": "hdc",
           "args": true,
           "sidecar": false
@@ -25,6 +37,18 @@
       "allow": [
         {
           "name": "hdc",
+          "cmd": "/usr/local/bin/hdc",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "hdc-home",
+          "cmd": "/opt/homebrew/bin/hdc",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "hdc-env",
           "cmd": "hdc",
           "args": true,
           "sidecar": false

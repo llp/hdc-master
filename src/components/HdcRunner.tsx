@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Upload, AppWindow, Trash, Settings, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight } from 'lucide-react';
+import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Package, Upload, AppWindow, Trash, Settings, Info, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight } from 'lucide-react';
 import { Command } from '@tauri-apps/plugin-shell'; // V2 核心导入
 import { open, confirm as tauriConfirm } from '@tauri-apps/plugin-dialog'; // 引入 tauriConfirm
 import { generatePreviewCommand, generateUriParam } from '../utils/cmdHelper';
@@ -149,7 +149,9 @@ const HdcRunner = () => {
         if (!ip) return;
         try {
             setLogs(prev => [...prev, `> Connecting to ${ip}...`]);
-             Command.create('hdc', ['tmode', 'port', '5555']);
+            const tmodeCmd = Command.create('hdc', ['tmode', 'port', '5555']);
+            await tmodeCmd.execute(); // 先执行 tmode，不一定需要 await 结果，但最好执行一下
+            
             const connectCmd = Command.create('hdc', ['tconn', ip]);
             const output = await connectCmd.execute();
             setLogs(prev => [...prev, output.stdout]);
@@ -381,7 +383,7 @@ const HdcRunner = () => {
                 cmd.stdout.on('data', line => setLogs(prev => [...prev, line]));
                 cmd.stderr.on('data', line => setLogs(prev => [...prev, `ERR: ${line}`]));
                 
-                await cmd.spawn();
+                const child = await cmd.spawn();
             }
         } catch (e) {
             setLogs(prev => [...prev, `Install failed: ${e}`]);
