@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Upload, AppWindow, Trash, Settings, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight } from 'lucide-react';
+import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Upload, AppWindow, Trash, Settings, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight, Edit2 } from 'lucide-react';
 import { Command } from '@tauri-apps/plugin-shell'; // V2 核心导入
 import { open, confirm as tauriConfirm } from '@tauri-apps/plugin-dialog'; // 引入 tauriConfirm
 import { generatePreviewCommand, generateUriParam } from '../utils/cmdHelper';
@@ -52,7 +52,7 @@ const HdcRunner = () => {
         { label: 'Local Debug', value: '192.168.0.100' },
         { label: 'Custom', value: '' }
     ];
-    const [selectedUriType, setSelectedUriType] = useState(uriOptions[0].value);
+    const [selectedUriType, setSelectedUriType] = useState(uriOptions[1].value); // 默认正式环境
     const [customUri, setCustomUri] = useState('');
     
     // 计算最终使用的 URI
@@ -79,9 +79,19 @@ const HdcRunner = () => {
     );
 
     // 获取完整预览命令
-    const fullCommandPreview = generatePreviewCommand(selectedDeviceId || 'No Device Selected', bundleName, abilityName, {
-        pkgName, version: pkgVersion, uri: loadUri, isDebug, extra: extraParams, entry: entryParam, paramsJson
-    });
+    const [fullCommandPreview, setFullCommandPreview] = useState('');
+    const [isEditingCommand, setIsEditingCommand] = useState(false);
+
+    // 当依赖项变化时，自动更新预览命令（如果不在编辑模式）
+    useEffect(() => {
+        if (!isEditingCommand) {
+            const cmd = generatePreviewCommand(selectedDeviceId || 'No Device Selected', bundleName, abilityName, {
+                pkgName, version: pkgVersion, uri: loadUri, isDebug, extra: extraParams, entry: entryParam, paramsJson
+            });
+            setFullCommandPreview(cmd);
+        }
+    }, [selectedDeviceId, bundleName, abilityName, pkgName, pkgVersion, loadUri, isDebug, extraParams, entryParam, paramsJson, isEditingCommand]);
+
 
     // --- 主题切换逻辑 ---
     useEffect(() => {
@@ -468,21 +478,55 @@ const HdcRunner = () => {
         try {
             setLogs(prev => [...prev, `> Executing on ${selectedDeviceId}...`]);
 
-            // 1. 准备参数
-            const uriParam = generateUriParam({
-                pkgName, version: pkgVersion, uri: loadUri, isDebug, extra: extraParams, entry: entryParam, paramsJson
-            });
+            // 解析当前编辑框中的命令
+            // 注意：这里我们假设用户修改后的命令仍然符合 hdc -t ... shell "..." 的基本结构
+            // 如果用户完全重写了命令，可能需要更复杂的解析逻辑
+            // 为了简单起见，我们这里直接执行用户编辑后的完整命令字符串是不太现实的，
+            // 因为 Tauri 的 Command API 需要将命令和参数分开传递。
+            
+            // 妥协方案：
+            // 如果用户处于编辑模式，我们尝试解析出 shell 后面的部分。
+            // 但更稳妥的方式是：只允许用户编辑参数，或者我们提供一个 "Raw Command" 模式。
+            
+            // 鉴于 Tauri Command API 的限制（必须预定义 allowed commands），
+            // 我们不能随意执行任意 shell 命令。
+            // 但是，我们的 allowed command 是 `hdc`，参数是 `args: true` (允许任意参数)。
+            // 所以理论上我们可以解析用户输入的字符串，拆分成 args 数组。
+            
+            let args: string[] = [];
+            
+            if (isEditingCommand) {
+                // 简单的参数拆分逻辑 (处理引号)
+                // 这是一个简化的 parser，可能无法处理所有边缘情况
+                const regex = /[^\s"']+|"([^"]*)"|'([^']*)'/g;
+                let match;
+                const parts = [];
+                while ((match = regex.exec(fullCommandPreview)) !== null) {
+                    // match[1] 是双引号内容，match[2] 是单引号内容，match[0] 是无引号内容
+                    parts.push(match[1] || match[2] || match[0]);
+                }
+                
+                // 移除第一个 'hdc'，因为它是命令本身
+                if (parts.length > 0 && parts[0] === 'hdc') {
+                    parts.shift();
+                }
+                args = parts;
+            } else {
+                // 使用自动生成的参数
+                const uriParam = generateUriParam({
+                    pkgName, version: pkgVersion, uri: loadUri, isDebug, extra: extraParams, entry: entryParam, paramsJson
+                });
+                
+                args = [
+                    '-t', selectedDeviceId,
+                    'shell',
+                    `aa start -b ${bundleName} -a ${abilityName} -U '${uriParam}'` // 注意这里作为一个整体参数传递给 shell
+                ];
+            }
 
             // 2. 调用 hdc
             let cmdName = workingCmd || 'hdc';
-            const command = getHdcCommand(cmdName, [
-                '-t', selectedDeviceId,
-                'shell',
-                'aa', 'start',
-                '-b', bundleName,
-                '-a', abilityName,
-                '-U', uriParam
-            ]);
+            const command = getHdcCommand(cmdName, args);
 
             // 3. 监听输出
             command.on('close', data => {
@@ -920,10 +964,26 @@ const HdcRunner = () => {
                 {activeTab === 'runner' && (
                     <div className={`${bgHeader} border-t ${borderCol} p-4 transition-colors duration-300`}>
                         <div className="mb-3">
-                            <div className={`text-[10px] ${textSub} uppercase mb-1`}>Preview</div>
-                            <code className={`block ${isDark ? 'bg-black' : 'bg-gray-100'} p-3 rounded text-xs font-mono ${textSub} break-all border ${borderCol}`}>
-                                {fullCommandPreview}
-                            </code>
+                            <div className="flex justify-between items-center mb-1">
+                                <div className={`text-[10px] ${textSub} uppercase`}>Preview</div>
+                                <button 
+                                    onClick={() => setIsEditingCommand(!isEditingCommand)}
+                                    className={`text-[10px] ${textSub} hover:text-blue-500 flex items-center gap-1`}
+                                >
+                                    <Edit2 size={10} /> {isEditingCommand ? 'Done' : 'Edit'}
+                                </button>
+                            </div>
+                            {isEditingCommand ? (
+                                <textarea
+                                    value={fullCommandPreview}
+                                    onChange={(e) => setFullCommandPreview(e.target.value)}
+                                    className={`block w-full ${isDark ? 'bg-black' : 'bg-gray-100'} p-3 rounded text-xs font-mono ${textSub} break-all border ${borderCol} outline-none focus:border-blue-500 resize-none h-24`}
+                                />
+                            ) : (
+                                <code className={`block ${isDark ? 'bg-black' : 'bg-gray-100'} p-3 rounded text-xs font-mono ${textSub} break-all border ${borderCol}`}>
+                                    {fullCommandPreview}
+                                </code>
+                            )}
                         </div>
                         <div className="flex justify-end space-x-3">
                             <button 
