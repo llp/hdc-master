@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Upload, AppWindow, Trash, Settings, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight } from 'lucide-react';
+import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Package, Upload, AppWindow, Trash, Settings, Info, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight } from 'lucide-react';
 import { Command } from '@tauri-apps/plugin-shell'; // V2 核心导入
 import { open, confirm as tauriConfirm } from '@tauri-apps/plugin-dialog'; // 引入 tauriConfirm
 import { generatePreviewCommand, generateUriParam } from '../utils/cmdHelper';
+import wechatQr from '../assets/ic_wechat.jpg'; // 导入微信二维码
 
 interface Device {
     id: string;
@@ -896,16 +897,11 @@ const HdcRunner = () => {
                                 <h2 className={`text-2xl font-bold ${textMain} mb-2`}>HDC Runner</h2>
                                 <p className={`${textSub} mb-8`}>A GUI tool for HarmonyOS Device Connector</p>
                                 
-                                <div className={`space-y-4 text-left ${isDark ? 'bg-black/30' : 'bg-gray-100'} p-6 rounded-xl border ${borderCol}`}>
-                                    <div className="flex justify-between">
-                                        <span className={textSub}>Developer</span>
-                                        <span className={`${textMain} font-medium`}>Liu Lipeng</span>
+                                <div className={`space-y-4 text-left ${isDark ? 'bg-black/30' : 'bg-gray-100'} p-6 rounded-xl border ${borderCol} flex flex-col items-center`}>
+                                    <div className="w-full flex justify-center mb-4">
+                                        <img src={wechatQr} alt="WeChat QR Code" className="w-32 h-32 rounded-lg shadow-md" />
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className={textSub}>Contact</span>
-                                        <span className={`${textMain} font-medium`}>WeChat：pengliliu</span>
-                                    </div>
-                                    <div className="flex justify-between">
+                                    <div className="w-full flex justify-between">
                                         <span className={textSub}>Version</span>
                                         <span className={`${textMain} font-mono`}>v1.0.0</span>
                                     </div>
