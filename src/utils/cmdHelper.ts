@@ -32,7 +32,12 @@ export const generateUriParam = (params: HdcParams): string => {
     // 5. extra (from=cmd 等)
     if (params.extra) queryParts.push(params.extra);
 
-    let fullUri = `esapp://${params.pkgName}/${params.version}`;
+    // 修改：如果 version 为空，不添加尾部斜杠，避免出现 //
+    let fullUri = `esapp://${params.pkgName}`;
+    if (params.version) {
+        fullUri += `/${params.version}`;
+    }
+
     if (queryParts.length > 0) {
         fullUri += `?${queryParts.join('&')}`;
     }
@@ -50,6 +55,7 @@ export const generatePreviewCommand = (
     params: HdcParams
 ): string => {
     const uriVal = generateUriParam(params);
-    // 单引号包裹 URI，防止 shell 解析错误
-    return `hdc -t ${deviceId} shell aa start -b ${bundle} -a ${ability} -U '${uriVal}'`;
+    // 修改：将 shell 后面的整个命令用双引号包裹，以确保参数被正确解析
+    // 注意：内部的单引号包裹 URI 保持不变
+    return `hdc -t ${deviceId} shell "aa start -b ${bundle} -a ${ability} -U '${uriVal}'"`;
 };
