@@ -56,9 +56,6 @@ const HdcRunner = () => {
     const [customUri, setCustomUri] = useState('');
     
     // 计算最终使用的 URI
-    // 如果选中的是 Custom，则使用 customUri
-    // 如果选中的是 Local Debug，则使用 customUri (允许编辑)，但初始值为 192.168.0.100
-    // 其他情况使用 selectedUriType
     const loadUri = (selectedUriType === '' || selectedUriType === '192.168.0.100') ? customUri : selectedUriType;
 
     const [isDebug, setIsDebug] = useState(true);
@@ -68,7 +65,6 @@ const HdcRunner = () => {
     const [kvParams, setKvParams] = useState<KeyValueParam[]>([{ key: 'key', value: 'value' }]);
 
     // 计算 entry 参数
-    // 修改：只要是 Local Debug 模式 (selectedUriType === '192.168.0.100')，Entry 就为 Debug
     const entryParam = selectedUriType === '192.168.0.100' ? 'Debug' : 'Application';
 
     // 日志
@@ -799,6 +795,15 @@ const HdcRunner = () => {
                                         </div>
                                     </div>
 
+                                    {/* Entry 参数显示 (只读) */}
+                                    <div className="space-y-1">
+                                        <label className={`text-xs ${textSub} ml-1`}>Entry</label>
+                                        <input
+                                            type="text" value={entryParam} readOnly
+                                            className={`w-full ${inputBg} border ${inputBorder} rounded p-2 text-sm text-gray-400 outline-none cursor-not-allowed`}
+                                        />
+                                    </div>
+
                                     <div className="space-y-2">
                                         <div className="flex items-center justify-between">
                                             <label className={`text-xs ${textSub} ml-1`}>Params (Key-Value)</label>
@@ -849,12 +854,11 @@ const HdcRunner = () => {
                                                 className={`w-full ${inputBg} border ${inputBorder} rounded p-2 text-sm outline-none focus:border-gray-500`}
                                             />
                                         </div>
-                                        <div className="pb-2 flex items-center justify-between">
+                                        <div className="pb-2 flex items-center justify-end">
                                             <label className="flex items-center space-x-2 cursor-pointer select-none">
                                                 <input type="checkbox" checked={isDebug} onChange={e => setIsDebug(e.target.checked)} className="accent-blue-600" />
                                                 <span className={`text-sm ${textSub}`}>Debug Mode</span>
                                             </label>
-                                            <div className={`text-xs ${textSub}`}>Entry: {entryParam}</div>
                                         </div>
                                     </div>
                                 </div>
