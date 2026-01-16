@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Upload, AppWindow, Trash, Settings, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight, Edit2 } from 'lucide-react';
+import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Package, Upload, AppWindow, Trash, Settings, Info, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight, Edit2 } from 'lucide-react';
 import { Command } from '@tauri-apps/plugin-shell'; // V2 核心导入
 import { open, confirm as tauriConfirm } from '@tauri-apps/plugin-dialog'; // 引入 tauriConfirm
 import { generatePreviewCommand, generateUriParam } from '../utils/cmdHelper';
@@ -49,14 +49,17 @@ const HdcRunner = () => {
         { label: 'Assets (Default)', value: 'assets:///vue' },
         { label: 'Prod Server', value: 'https://api.extscreen.com/extscreenapi/api/extend_screen/v2/hili/client/tvinfo' },
         { label: 'Test Server', value: 'http://test-api.extscreen.com/extscreenapi/api/extend_screen/v2/hili/client/tvinfo/harmony' },
-        { label: 'Local Debug', value: '192.168.0.100' },
-        { label: 'Custom', value: '' }
+        { label: 'Custom', value: '' },
+        { label: 'Local Debug', value: '192.168.0.100' }
     ];
     const [selectedUriType, setSelectedUriType] = useState(uriOptions[1].value); // 默认正式环境
     const [customUri, setCustomUri] = useState('');
     
     // 计算最终使用的 URI
-    const loadUri = selectedUriType === '' ? customUri : selectedUriType;
+    // 如果选中的是 Custom，则使用 customUri
+    // 如果选中的是 Local Debug，则使用 customUri (允许编辑)，但初始值为 192.168.0.100
+    // 其他情况使用 selectedUriType
+    const loadUri = (selectedUriType === '' || selectedUriType === '192.168.0.100') ? customUri : selectedUriType;
 
     const [isDebug, setIsDebug] = useState(true);
     const [extraParams, setExtraParams] = useState('from=cmd');
@@ -65,7 +68,8 @@ const HdcRunner = () => {
     const [kvParams, setKvParams] = useState<KeyValueParam[]>([{ key: 'key', value: 'value' }]);
 
     // 计算 entry 参数
-    const entryParam = loadUri === '192.168.0.100' ? 'Debug' : 'Application';
+    // 修改：只要是 Local Debug 模式 (selectedUriType === '192.168.0.100')，Entry 就为 Debug
+    const entryParam = selectedUriType === '192.168.0.100' ? 'Debug' : 'Application';
 
     // 日志
     const [logs, setLogs] = useState<string[]>(['Ready.']);
@@ -92,6 +96,16 @@ const HdcRunner = () => {
         }
     }, [selectedDeviceId, bundleName, abilityName, pkgName, pkgVersion, loadUri, isDebug, extraParams, entryParam, paramsJson, isEditingCommand]);
 
+    // 处理 URI 选择变化
+    const handleUriTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const newValue = e.target.value;
+        setSelectedUriType(newValue);
+        if (newValue === '192.168.0.100') {
+            setCustomUri('192.168.0.100'); // 初始化 Local Debug 的值
+        } else if (newValue === '') {
+            setCustomUri(''); // 清空 Custom 的值
+        }
+    };
 
     // --- 主题切换逻辑 ---
     useEffect(() => {
@@ -478,21 +492,6 @@ const HdcRunner = () => {
         try {
             setLogs(prev => [...prev, `> Executing on ${selectedDeviceId}...`]);
 
-            // 解析当前编辑框中的命令
-            // 注意：这里我们假设用户修改后的命令仍然符合 hdc -t ... shell "..." 的基本结构
-            // 如果用户完全重写了命令，可能需要更复杂的解析逻辑
-            // 为了简单起见，我们这里直接执行用户编辑后的完整命令字符串是不太现实的，
-            // 因为 Tauri 的 Command API 需要将命令和参数分开传递。
-            
-            // 妥协方案：
-            // 如果用户处于编辑模式，我们尝试解析出 shell 后面的部分。
-            // 但更稳妥的方式是：只允许用户编辑参数，或者我们提供一个 "Raw Command" 模式。
-            
-            // 鉴于 Tauri Command API 的限制（必须预定义 allowed commands），
-            // 我们不能随意执行任意 shell 命令。
-            // 但是，我们的 allowed command 是 `hdc`，参数是 `args: true` (允许任意参数)。
-            // 所以理论上我们可以解析用户输入的字符串，拆分成 args 数组。
-            
             let args: string[] = [];
             
             if (isEditingCommand) {
@@ -777,7 +776,7 @@ const HdcRunner = () => {
                                         <div className="flex space-x-2">
                                             <select 
                                                 value={selectedUriType} 
-                                                onChange={(e) => setSelectedUriType(e.target.value)}
+                                                onChange={handleUriTypeChange}
                                                 className={`${inputBg} border ${inputBorder} rounded p-2 text-sm text-yellow-500 outline-none focus:border-yellow-500 max-w-[150px]`}
                                             >
                                                 {uriOptions.map(opt => (
@@ -789,7 +788,10 @@ const HdcRunner = () => {
                                                 value={loadUri} 
                                                 onChange={e => {
                                                     setCustomUri(e.target.value);
-                                                    setSelectedUriType(''); // 只要用户手动输入，就切换到自定义模式
+                                                    // 如果当前不是 Custom 或 Local Debug，则切换到 Custom
+                                                    if (selectedUriType !== '' && selectedUriType !== '192.168.0.100') {
+                                                        setSelectedUriType('');
+                                                    }
                                                 }}
                                                 placeholder="Enter URI..."
                                                 className={`flex-1 ${inputBg} border ${inputBorder} rounded p-2 text-sm text-yellow-500 outline-none focus:border-yellow-500`}
