@@ -16,6 +16,7 @@ interface AppInfo {
     isSystem: boolean;
     details?: string; // 详细信息
     isExpanded?: boolean; // 是否展开
+    abilityName?: string; // 可启动的 Ability Name
 }
 
 interface KeyValueParam {
@@ -351,8 +352,40 @@ const HdcRunner = () => {
             const output = await cmd.execute();
             
             let details = '';
+            let abilityName = '';
+
             if (output.code === 0) {
                 details = output.stdout;
+                // 尝试解析 abilityInfos 中的 name
+                // 格式通常是:
+                // abilityInfos:
+                //   - name: EntryAbility
+                //     labelId: ...
+                // 或者
+                //   name: EntryAbility
+                //   labelId: ...
+                // 尝试更宽松的正则匹配
+                // 注意：这里我们尝试匹配 "name: " 后面跟着的单词，但要排除掉 bundleName 等其他 name
+                // 通常 abilityInfos 下面的 name 是我们想要的
+                // 简单起见，我们查找 "name: " 且不包含 "." 的（通常 Ability Name 不带点，而 Bundle Name 带点）
+                // 或者更精确地定位 abilityInfos 块
+                
+                // 尝试匹配 abilityInfos 块中的 name
+                const abilityInfosMatch = details.match(/abilityInfos:([\s\S]*?)(?:$|signatureInfo:)/);
+                if (abilityInfosMatch) {
+                    const abilityBlock = abilityInfosMatch[1];
+                    const nameMatch = abilityBlock.match(/name:\s*(\w+)/);
+                    if (nameMatch && nameMatch[1]) {
+                        abilityName = nameMatch[1];
+                    }
+                }
+                
+                // 如果上面的没匹配到，尝试全局搜索 name: EntryAbility 这种常见模式
+                if (!abilityName) {
+                     const entryMatch = details.match(/name:\s*(EntryAbility)/);
+                     if (entryMatch) abilityName = entryMatch[1];
+                }
+
             } else {
                 // 尝试 dumpsys package <pkgName> (Android 兼容)
                 const cmd2 = getHdcCommand(cmdName, ['-t', selectedDeviceId, 'shell', 'dumpsys', 'package', pkgName]);
@@ -366,6 +399,7 @@ const HdcRunner = () => {
 
             const newAppList = [...appList];
             newAppList[index].details = details;
+            newAppList[index].abilityName = abilityName;
             newAppList[index].isExpanded = true;
             setAppList(newAppList);
 
@@ -400,6 +434,23 @@ const HdcRunner = () => {
             }
         } catch (e) {
             setLogs(prev => [...prev, `Uninstall failed: ${e}`]);
+        }
+    };
+
+    const launchApp = async (pkg: string, ability: string) => {
+        if (!ability) {
+            setLogs(prev => [...prev, `Error: No ability name found for ${pkg}. Please expand details first.`]);
+            return;
+        }
+        try {
+            setLogs(prev => [...prev, `> Launching ${pkg}/${ability}...`]);
+            let cmdName = workingCmd || 'hdc';
+            // 启动命令：aa start -b <bundleName> -a <abilityName>
+            const cmd = getHdcCommand(cmdName, ['-t', selectedDeviceId, 'shell', 'aa', 'start', '-b', pkg, '-a', ability]);
+            const output = await cmd.execute();
+            setLogs(prev => [...prev, output.stdout]);
+        } catch (e) {
+            setLogs(prev => [...prev, `Launch failed: ${e}`]);
         }
     };
 
@@ -911,6 +962,16 @@ const HdcRunner = () => {
                                                             </td>
                                                             <td className="p-3 text-right pr-4">
                                                                 <div className="flex justify-end space-x-2" onClick={e => e.stopPropagation()}>
+                                                                    {/* 启动按钮 */}
+                                                                    {app.abilityName && (
+                                                                        <button 
+                                                                            onClick={() => launchApp(app.name, app.abilityName!)} 
+                                                                            className="p-1.5 bg-green-500/20 hover:bg-green-500/40 text-green-500 rounded mr-2" 
+                                                                            title={`Launch ${app.abilityName}`}
+                                                                        >
+                                                                            <Play size={14}/>
+                                                                        </button>
+                                                                    )}
                                                                     <button onClick={() => uninstallApp(app.name)} className="p-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-500 rounded" title="Uninstall">
                                                                         <Trash size={14}/>
                                                                     </button>
