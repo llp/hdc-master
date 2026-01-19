@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Package, Upload, AppWindow, Trash, Settings, Info, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight, Edit2, Copy } from 'lucide-react';
+import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Package, Upload, AppWindow, Trash, Settings, Info, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight, Edit2, Copy, Monitor } from 'lucide-react';
 import { Command } from '@tauri-apps/plugin-shell'; // V2 核心导入
 import { open, confirm as tauriConfirm } from '@tauri-apps/plugin-dialog'; // 引入 tauriConfirm
 import { generatePreviewCommand, generateUriParam } from '../utils/cmdHelper';
@@ -26,7 +26,7 @@ interface KeyValueParam {
 
 const HdcRunner = () => {
     // --- 状态管理 ---
-    const [activeTab, setActiveTab] = useState<'runner' | 'apps' | 'settings'>('runner');
+    const [activeTab, setActiveTab] = useState<'runner' | 'apps' | 'device' | 'settings'>('runner');
     const [devices, setDevices] = useState<Device[]>([]);
     const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
     const [newDeviceIp, setNewDeviceIp] = useState('');
@@ -66,7 +66,13 @@ const HdcRunner = () => {
     const [kvParams, setKvParams] = useState<KeyValueParam[]>([{ key: 'key', value: 'value' }]);
 
     // 计算 entry 参数
-    const entryParam = selectedUriType === '192.168.0.100' ? 'Debug' : 'Application';
+    // 逻辑：
+    // 1. 如果是 Device Tab，entry 固定为 Device
+    // 2. 如果是 Runner Tab 且选择了 Local Debug，entry 为 Debug
+    // 3. 其他情况 entry 为 Application
+    const entryParam = activeTab === 'device' 
+        ? 'Device' 
+        : (selectedUriType === '192.168.0.100' ? 'Debug' : 'Application');
 
     // 日志
     const [logs, setLogs] = useState<string[]>(['Ready.']);
@@ -86,12 +92,14 @@ const HdcRunner = () => {
     // 当依赖项变化时，自动更新预览命令（如果不在编辑模式）
     useEffect(() => {
         if (!isEditingCommand) {
+            // 在 Device Tab 下，部分参数可能不需要，但为了保持命令结构一致，我们还是传递它们
+            // 只是在 UI 上隐藏了输入框
             const cmd = generatePreviewCommand(selectedDeviceId || 'No Device Selected', bundleName, abilityName, {
                 pkgName, version: pkgVersion, uri: loadUri, isDebug, extra: extraParams, entry: entryParam, paramsJson
             });
             setFullCommandPreview(cmd);
         }
-    }, [selectedDeviceId, bundleName, abilityName, pkgName, pkgVersion, loadUri, isDebug, extraParams, entryParam, paramsJson, isEditingCommand]);
+    }, [selectedDeviceId, bundleName, abilityName, pkgName, pkgVersion, loadUri, isDebug, extraParams, entryParam, paramsJson, isEditingCommand, activeTab]);
 
     // 处理 URI 选择变化
     const handleUriTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -648,6 +656,13 @@ const HdcRunner = () => {
                         <Terminal size={24} />
                     </button>
                     <button 
+                        onClick={() => setActiveTab('device')}
+                        className={`p-3 rounded-xl transition-all ${activeTab === 'device' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : `${textSub} hover:text-gray-400 hover:bg-gray-800/10`}`}
+                        title="Device Mode"
+                    >
+                        <Monitor size={24} />
+                    </button>
+                    <button 
                         onClick={() => setActiveTab('apps')}
                         className={`p-3 rounded-xl transition-all ${activeTab === 'apps' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : `${textSub} hover:text-gray-400 hover:bg-gray-800/10`}`}
                         title="App Manager"
@@ -754,7 +769,7 @@ const HdcRunner = () => {
                 {/* 内容区域 - 根据 Tab 切换 */}
                 <div className="flex-1 overflow-hidden relative">
                     
-                    {/* Tab 1: Runner */}
+                    {/* Tab 1: Runner (Default) */}
                     {activeTab === 'runner' && (
                         <div className="absolute inset-0 flex flex-col overflow-y-auto p-6 space-y-6">
                             {/* Runtime 配置 */}
@@ -908,7 +923,75 @@ const HdcRunner = () => {
                         </div>
                     )}
 
-                    {/* Tab 2: App Manager */}
+                    {/* Tab 2: Device Mode (New) */}
+                    {activeTab === 'device' && (
+                        <div className="absolute inset-0 flex flex-col overflow-y-auto p-6 space-y-6">
+                            {/* Runtime 配置 (复用) */}
+                            <div className={`${bgCard} p-5 rounded-xl border ${borderCol} shadow-sm`}>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className={`text-xs font-bold ${textSub} uppercase tracking-wider`}>Runtime Config</h3>
+                                    <button 
+                                        onClick={clearAppData}
+                                        className={`flex items-center space-x-1 px-2 py-1 ${isDark ? 'bg-red-900/20 hover:bg-red-900/40' : 'bg-red-100 hover:bg-red-200'} text-red-500 rounded text-xs transition`}
+                                        title="Clear App Data"
+                                    >
+                                        <Eraser size={12} /> <span>Clear Data</span>
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className={`text-xs ${textSub} ml-1`}>Bundle Name (-b)</label>
+                                        <input
+                                            type="text" value={bundleName} onChange={e => setBundleName(e.target.value)}
+                                            className={`w-full ${inputBg} border ${inputBorder} rounded p-2 text-sm text-blue-500 outline-none focus:border-blue-500`}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className={`text-xs ${textSub} ml-1`}>Ability Name (-a)</label>
+                                        <input
+                                            type="text" value={abilityName} onChange={e => setAbilityName(e.target.value)}
+                                            className={`w-full ${inputBg} border ${inputBorder} rounded p-2 text-sm text-blue-500 outline-none focus:border-blue-500`}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Device Mode 专属参数 */}
+                            <div className={`${bgCard} p-5 rounded-xl border ${borderCol} shadow-sm`}>
+                                <h3 className={`text-xs font-bold ${textSub} uppercase tracking-wider mb-4`}>Device Mode Params</h3>
+                                <div className="space-y-4">
+                                    {/* 仅显示 Package ID */}
+                                    <div className="space-y-1">
+                                        <label className={`text-xs ${textSub} ml-1`}>Package ID</label>
+                                        <input
+                                            type="text" value={pkgName} onChange={e => setPkgName(e.target.value)}
+                                            className={`w-full ${inputBg} border ${inputBorder} rounded p-2 text-sm text-green-500 outline-none focus:border-green-500`}
+                                        />
+                                    </div>
+
+                                    {/* Entry 参数显示 (只读, 固定为 Device) */}
+                                    <div className="space-y-1">
+                                        <label className={`text-xs ${textSub} ml-1`}>Entry</label>
+                                        <input
+                                            type="text" value="Device" readOnly
+                                            className={`w-full ${inputBg} border ${inputBorder} rounded p-2 text-sm text-gray-400 outline-none cursor-not-allowed`}
+                                        />
+                                    </div>
+
+                                    {/* Extra Params (可选) */}
+                                    <div className="space-y-1">
+                                        <label className={`text-xs ${textSub} ml-1`}>Extra Params</label>
+                                        <input
+                                            type="text" value={extraParams} onChange={e => setExtraParams(e.target.value)}
+                                            className={`w-full ${inputBg} border ${inputBorder} rounded p-2 text-sm outline-none focus:border-gray-500`}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Tab 3: App Manager */}
                     {activeTab === 'apps' && (
                         <div className="absolute inset-0 flex flex-col p-6">
                             <div className="flex items-center justify-between mb-4">
@@ -998,7 +1081,7 @@ const HdcRunner = () => {
                         </div>
                     )}
 
-                    {/* Tab 3: Settings / About */}
+                    {/* Tab 4: Settings / About */}
                     {activeTab === 'settings' && (
                         <div className="absolute inset-0 flex flex-col p-6 items-center justify-center text-center">
                             <div className={`${bgCard} p-8 rounded-2xl border ${borderCol} max-w-md w-full shadow-lg`}>
@@ -1027,8 +1110,8 @@ const HdcRunner = () => {
 
                 </div>
 
-                {/* 底部操作栏 (仅在 Runner Tab 显示) */}
-                {activeTab === 'runner' && (
+                {/* 底部操作栏 (仅在 Runner 和 Device Tab 显示) */}
+                {(activeTab === 'runner' || activeTab === 'device') && (
                     <div className={`${bgHeader} border-t ${borderCol} p-4 transition-colors duration-300`}>
                         <div className="mb-3">
                             <div className="flex justify-between items-center mb-1">
