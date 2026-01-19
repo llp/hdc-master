@@ -48,7 +48,7 @@ const HdcRunner = () => {
     // Target URI 选项
     const uriOptions = [
         { label: 'Assets (Default)', value: 'assets:///vue' },
-        { label: 'Prod Server', value: 'https://api.extscreen.com/extscreenapi/api/extend_screen/v2/hili/client/tvinfo' },
+        { label: 'Prod Server', value: 'https://api.extscreen.com/extscreenapi/api/extend_screen/v2/hili/client/tvinfo/harmony' },
         { label: 'Test Server', value: 'http://test-api.extscreen.com/extscreenapi/api/extend_screen/v2/hili/client/tvinfo/harmony' },
         { label: 'Custom', value: '' },
         { label: 'Local Debug', value: '192.168.0.100' }
@@ -92,10 +92,15 @@ const HdcRunner = () => {
     // 当依赖项变化时，自动更新预览命令（如果不在编辑模式）
     useEffect(() => {
         if (!isEditingCommand) {
-            // 在 Device Tab 下，部分参数可能不需要，但为了保持命令结构一致，我们还是传递它们
-            // 只是在 UI 上隐藏了输入框
+            const isDeviceMode = activeTab === 'device';
             const cmd = generatePreviewCommand(selectedDeviceId || 'No Device Selected', bundleName, abilityName, {
-                pkgName, version: pkgVersion, uri: loadUri, isDebug, extra: extraParams, entry: entryParam, paramsJson
+                pkgName, 
+                version: pkgVersion, 
+                uri: isDeviceMode ? '' : loadUri, 
+                isDebug: isDeviceMode ? false : isDebug, 
+                extra: isDeviceMode ? '' : extraParams, 
+                entry: entryParam, 
+                paramsJson: isDeviceMode ? '' : paramsJson
             });
             setFullCommandPreview(cmd);
         }
@@ -557,9 +562,16 @@ const HdcRunner = () => {
                 }
                 args = parts;
             } else {
+                const isDeviceMode = activeTab === 'device';
                 // 使用自动生成的参数
                 const uriParam = generateUriParam({
-                    pkgName, version: pkgVersion, uri: loadUri, isDebug, extra: extraParams, entry: entryParam, paramsJson
+                    pkgName, 
+                    version: pkgVersion, 
+                    uri: isDeviceMode ? '' : loadUri,
+                    isDebug: isDeviceMode ? false : isDebug,
+                    extra: isDeviceMode ? '' : extraParams,
+                    entry: entryParam, 
+                    paramsJson: isDeviceMode ? '' : paramsJson
                 });
                 
                 args = [
