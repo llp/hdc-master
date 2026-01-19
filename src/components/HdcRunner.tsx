@@ -48,7 +48,7 @@ const HdcRunner = () => {
     // Target URI 选项
     const uriOptions = [
         { label: 'Assets (Default)', value: 'assets:///vue' },
-        { label: 'Prod Server', value: 'https://api.extscreen.com/extscreenapi/api/extend_screen/v2/hili/client/tvinfo/harmony' },
+        { label: 'Prod Server', value: 'https://api.extscreen.com/extscreenapi/api/extend_screen/v2/hili/client/tvinfo' },
         { label: 'Test Server', value: 'http://test-api.extscreen.com/extscreenapi/api/extend_screen/v2/hili/client/tvinfo/harmony' },
         { label: 'Custom', value: '' },
         { label: 'Local Debug', value: '192.168.0.100' }
@@ -769,7 +769,7 @@ const HdcRunner = () => {
                 {/* 内容区域 - 根据 Tab 切换 */}
                 <div className="flex-1 overflow-hidden relative">
                     
-                    {/* Tab 1: Runner (Default) */}
+                    {/* Tab 1: Runner */}
                     {activeTab === 'runner' && (
                         <div className="absolute inset-0 flex flex-col overflow-y-auto p-6 space-y-6">
                             {/* Runtime 配置 */}
@@ -960,30 +960,12 @@ const HdcRunner = () => {
                             <div className={`${bgCard} p-5 rounded-xl border ${borderCol} shadow-sm`}>
                                 <h3 className={`text-xs font-bold ${textSub} uppercase tracking-wider mb-4`}>Device Mode Params</h3>
                                 <div className="space-y-4">
-                                    {/* 仅显示 Package ID */}
-                                    <div className="space-y-1">
-                                        <label className={`text-xs ${textSub} ml-1`}>Package ID</label>
-                                        <input
-                                            type="text" value={pkgName} onChange={e => setPkgName(e.target.value)}
-                                            className={`w-full ${inputBg} border ${inputBorder} rounded p-2 text-sm text-green-500 outline-none focus:border-green-500`}
-                                        />
-                                    </div>
-
                                     {/* Entry 参数显示 (只读, 固定为 Device) */}
                                     <div className="space-y-1">
                                         <label className={`text-xs ${textSub} ml-1`}>Entry</label>
                                         <input
                                             type="text" value="Device" readOnly
                                             className={`w-full ${inputBg} border ${inputBorder} rounded p-2 text-sm text-gray-400 outline-none cursor-not-allowed`}
-                                        />
-                                    </div>
-
-                                    {/* Extra Params (可选) */}
-                                    <div className="space-y-1">
-                                        <label className={`text-xs ${textSub} ml-1`}>Extra Params</label>
-                                        <input
-                                            type="text" value={extraParams} onChange={e => setExtraParams(e.target.value)}
-                                            className={`w-full ${inputBg} border ${inputBorder} rounded p-2 text-sm outline-none focus:border-gray-500`}
                                         />
                                     </div>
                                 </div>
@@ -1081,7 +1063,7 @@ const HdcRunner = () => {
                         </div>
                     )}
 
-                    {/* Tab 4: Settings / About */}
+                    {/* Tab 3: Settings / About */}
                     {activeTab === 'settings' && (
                         <div className="absolute inset-0 flex flex-col p-6 items-center justify-center text-center">
                             <div className={`${bgCard} p-8 rounded-2xl border ${borderCol} max-w-md w-full shadow-lg`}>
