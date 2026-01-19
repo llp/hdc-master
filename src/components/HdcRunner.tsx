@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Package, Upload, AppWindow, Trash, Settings, Info, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight, Edit2 } from 'lucide-react';
+import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Package, Upload, AppWindow, Trash, Settings, Info, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight, Edit2, Copy } from 'lucide-react';
 import { Command } from '@tauri-apps/plugin-shell'; // V2 核心导入
 import { open, confirm as tauriConfirm } from '@tauri-apps/plugin-dialog'; // 引入 tauriConfirm
 import { generatePreviewCommand, generateUriParam } from '../utils/cmdHelper';
@@ -48,7 +48,7 @@ const HdcRunner = () => {
     // Target URI 选项
     const uriOptions = [
         { label: 'Assets (Default)', value: 'assets:///vue' },
-        { label: 'Prod Server', value: 'https://api.extscreen.com/extscreenapi/api/extend_screen/v2/hili/client/tvinfo' },
+        { label: 'Prod Server', value: 'https://api.extscreen.com/extscreenapi/api/extend_screen/v2/hili/client/tvinfo/harmony' },
         { label: 'Test Server', value: 'http://test-api.extscreen.com/extscreenapi/api/extend_screen/v2/hili/client/tvinfo/harmony' },
         { label: 'Custom', value: '' },
         { label: 'Local Debug', value: '192.168.0.100' }
@@ -365,27 +365,10 @@ const HdcRunner = () => {
                 //   name: EntryAbility
                 //   labelId: ...
                 // 尝试更宽松的正则匹配
-                // 注意：这里我们尝试匹配 "name: " 后面跟着的单词，但要排除掉 bundleName 等其他 name
-                // 通常 abilityInfos 下面的 name 是我们想要的
-                // 简单起见，我们查找 "name: " 且不包含 "." 的（通常 Ability Name 不带点，而 Bundle Name 带点）
-                // 或者更精确地定位 abilityInfos 块
-                
-                // 尝试匹配 abilityInfos 块中的 name
-                const abilityInfosMatch = details.match(/abilityInfos:([\s\S]*?)(?:$|signatureInfo:)/);
-                if (abilityInfosMatch) {
-                    const abilityBlock = abilityInfosMatch[1];
-                    const nameMatch = abilityBlock.match(/name:\s*(\w+)/);
-                    if (nameMatch && nameMatch[1]) {
-                        abilityName = nameMatch[1];
-                    }
+                const abilityMatch = details.match(/abilityInfos:[\s\S]*?name:\s*(\w+)/);
+                if (abilityMatch && abilityMatch[1]) {
+                    abilityName = abilityMatch[1];
                 }
-                
-                // 如果上面的没匹配到，尝试全局搜索 name: EntryAbility 这种常见模式
-                if (!abilityName) {
-                     const entryMatch = details.match(/name:\s*(EntryAbility)/);
-                     if (entryMatch) abilityName = entryMatch[1];
-                }
-
             } else {
                 // 尝试 dumpsys package <pkgName> (Android 兼容)
                 const cmd2 = getHdcCommand(cmdName, ['-t', selectedDeviceId, 'shell', 'dumpsys', 'package', pkgName]);
@@ -445,13 +428,21 @@ const HdcRunner = () => {
         try {
             setLogs(prev => [...prev, `> Launching ${pkg}/${ability}...`]);
             let cmdName = workingCmd || 'hdc';
-            // 启动命令：aa start -b <bundleName> -a <abilityName>
             const cmd = getHdcCommand(cmdName, ['-t', selectedDeviceId, 'shell', 'aa', 'start', '-b', pkg, '-a', ability]);
             const output = await cmd.execute();
             setLogs(prev => [...prev, output.stdout]);
         } catch (e) {
             setLogs(prev => [...prev, `Launch failed: ${e}`]);
         }
+    };
+
+    // 复制文本到剪贴板
+    const copyToClipboard = (text: string) => {
+        navigator.clipboard.writeText(text).then(() => {
+            setLogs(prev => [...prev, 'Copied to clipboard.']);
+        }).catch(err => {
+            setLogs(prev => [...prev, `Failed to copy: ${err}`]);
+        });
     };
 
     // --- 清除应用数据逻辑 ---
@@ -980,8 +971,17 @@ const HdcRunner = () => {
                                                         </tr>
                                                         {app.isExpanded && (
                                                             <tr>
-                                                                <td colSpan={2} className={`p-4 ${isDark ? 'bg-black/20' : 'bg-gray-50'} text-xs font-mono ${textSub} whitespace-pre-wrap break-all`}>
+                                                                <td colSpan={2} className={`p-4 ${isDark ? 'bg-black/20' : 'bg-gray-50'} text-xs font-mono ${textSub} whitespace-pre-wrap break-all relative`}>
                                                                     {app.details || 'Loading details...'}
+                                                                    {app.details && (
+                                                                        <button 
+                                                                            onClick={() => copyToClipboard(app.details!)}
+                                                                            className="absolute top-2 right-2 p-1.5 bg-gray-700/50 hover:bg-gray-700 text-gray-300 rounded transition"
+                                                                            title="Copy details"
+                                                                        >
+                                                                            <Copy size={14} />
+                                                                        </button>
+                                                                    )}
                                                                 </td>
                                                             </tr>
                                                         )}
