@@ -1091,7 +1091,7 @@ const HdcRunner = () => {
                                     </div>
                                     <div className="w-full flex justify-between">
                                         <span className={textSub}>Version</span>
-                                        <span className={`${textMain} font-mono`}>v1.0.0</span>
+                                        <span className={`${textMain} font-mono`}>v1.1.0</span>
                                     </div>
                                 </div>
 
