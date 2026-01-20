@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Package, Upload, AppWindow, Trash, Settings, Info, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight, Edit2, Copy, Monitor, FolderOpen, AlertTriangle } from 'lucide-react';
+import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Upload, AppWindow, Trash, Settings, Info, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight, Edit2, Copy, Monitor, FolderOpen, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Command } from '@tauri-apps/plugin-shell'; // V2 核心导入
 import { open, confirm as tauriConfirm } from '@tauri-apps/plugin-dialog'; // 引入 tauriConfirm
 import { generatePreviewCommand, generateUriParam } from '../utils/cmdHelper';
@@ -78,15 +78,10 @@ const HdcRunner = () => {
     const [showHdcMissingModal, setShowHdcMissingModal] = useState(false);
     const [isValidatingHdc, setIsValidatingHdc] = useState(false);
     const [hdcValidationError, setHdcValidationError] = useState('');
+    const [hdcValidationSuccess, setHdcValidationSuccess] = useState(false);
 
     // 计算 entry 参数
-    // 逻辑：
-    // 1. 如果是 Device Tab，entry 固定为 Device
-    // 2. 如果是 Runner Tab 且选择了 Local Debug，entry 为 Debug
-    // 3. 其他情况 entry 为 Application
-    const entryParam = activeTab === 'device' 
-        ? 'Device' 
-        : (selectedUriType === '192.168.0.100' ? 'Debug' : 'Application');
+    const entryParam = selectedUriType === '192.168.0.100' ? 'Debug' : 'Application';
 
     // 日志
     const [logs, setLogs] = useState<string[]>(['Ready.']);
@@ -175,10 +170,7 @@ const HdcRunner = () => {
             return Command.sidecar('hdc', args);
         }
         // 如果是自定义路径，尝试使用 sh -c 来执行
-        // 注意：这需要 capabilities 中允许执行 sh
         if (cmdName === customHdcPath && customHdcPath) {
-             // 使用 sh -c "path/to/hdc args..."
-             // args 需要正确转义，这里简单处理
              const cmdString = `"${customHdcPath}" ${args.map(a => `"${a}"`).join(' ')}`;
              return Command.create('sh', ['-c', cmdString]);
         }
@@ -225,7 +217,6 @@ const HdcRunner = () => {
                     if (trimmedCustomPath && cmdName === trimmedCustomPath) {
                         customPathError = err;
                     }
-                    // console.log(`Failed to execute ${cmdName}:`, e);
                 }
             }
 
@@ -245,11 +236,13 @@ const HdcRunner = () => {
                 return { success: true };
             } else {
                 const finalError = customPathError || lastError;
-                setLogs(prev => [...prev, `Error listing devices: No hdc command found or execution failed. Last error: ${finalError}`]);
-                // 如果失败了，清除缓存，下次重试所有
+                setLogs(prev => [...prev, `Error: No hdc command found. Last error: ${finalError}`]);
                 if (workingCmd) setWorkingCmd('');
                 if (!workingCmd) {
                     setShowHdcMissingModal(true);
+                    if (trimmedCustomPath && customPathError) {
+                        setHdcValidationError(`Custom path failed: ${customPathError}`);
+                    }
                 }
                 return { success: false, error: finalError };
             }
@@ -330,7 +323,6 @@ const HdcRunner = () => {
             }
             
             let output: any = null;
-            // let currentCmd = '';
 
             // 1. 尝试 bm dump
             for (const cmdName of commandsToTry) {
@@ -339,7 +331,6 @@ const HdcRunner = () => {
                     const res = await c.execute();
                     if (res.code === 0) {
                         output = res;
-                        // currentCmd = cmdName;
                         if (!workingCmd) setWorkingCmd(cmdName);
                         break;
                     }
@@ -355,7 +346,6 @@ const HdcRunner = () => {
                         const res = await c.execute();
                         if (res.code === 0) {
                             output = res;
-                            // currentCmd = cmdName;
                             if (!workingCmd) setWorkingCmd(cmdName);
                             break;
                         }
@@ -427,19 +417,22 @@ const HdcRunner = () => {
 
             if (output.code === 0) {
                 details = output.stdout;
-                // 尝试解析 abilityInfos 中的 name
-                // 格式通常是:
-                // abilityInfos:
-                //   - name: EntryAbility
-                //     labelId: ...
-                // 或者
-                //   name: EntryAbility
-                //   labelId: ...
-                // 尝试更宽松的正则匹配
-                const abilityMatch = details.match(/abilityInfos:[\s\S]*?name:\s*(\w+)/);
-                if (abilityMatch && abilityMatch[1]) {
-                    abilityName = abilityMatch[1];
+                // 尝试匹配 abilityInfos 块中的 name
+                const abilityInfosMatch = details.match(/abilityInfos:[\s\S]*?name:\s*(\w+)/);
+                if (abilityInfosMatch) {
+                    const abilityBlock = abilityInfosMatch[1];
+                    const nameMatch = abilityBlock.match(/name:\s*(\w+)/);
+                    if (nameMatch && nameMatch[1]) {
+                        abilityName = nameMatch[1];
+                    }
                 }
+                
+                // 如果上面的没匹配到，尝试全局搜索 name: EntryAbility 这种常见模式
+                if (!abilityName) {
+                     const entryMatch = details.match(/name:\s*(EntryAbility)/);
+                     if (entryMatch) abilityName = entryMatch[1];
+                }
+
             } else {
                 // 尝试 dumpsys package <pkgName> (Android 兼容)
                 const cmd2 = getHdcCommand(cmdName, ['-t', selectedDeviceId, 'shell', 'dumpsys', 'package', pkgName]);
@@ -605,16 +598,13 @@ const HdcRunner = () => {
             
             if (isEditingCommand) {
                 // 简单的参数拆分逻辑 (处理引号)
-                // 这是一个简化的 parser，可能无法处理所有边缘情况
                 const regex = /[^\s"']+|"([^"]*)"|'([^']*)'/g;
                 let match;
                 const parts = [];
                 while ((match = regex.exec(fullCommandPreview)) !== null) {
-                    // match[1] 是双引号内容，match[2] 是单引号内容，match[0] 是无引号内容
                     parts.push(match[1] || match[2] || match[0]);
                 }
                 
-                // 移除第一个 'hdc'，因为它是命令本身
                 if (parts.length > 0 && parts[0] === 'hdc') {
                     parts.shift();
                 }
@@ -635,7 +625,7 @@ const HdcRunner = () => {
                 args = [
                     '-t', selectedDeviceId,
                     'shell',
-                    `aa start -b ${bundleName} -a ${abilityName} -U '${uriParam}'` // 注意这里作为一个整体参数传递给 shell
+                    `aa start -b ${bundleName} -a ${abilityName} -U '${uriParam}'`
                 ];
             }
 
@@ -708,21 +698,45 @@ const HdcRunner = () => {
         });
         if (selected && typeof selected === 'string') {
             setCustomHdcPath(selected);
+            setHdcValidationSuccess(false);
+            setHdcValidationError('');
         }
     };
 
-    const handleSaveAndRetry = async () => {
+    const handleSaveAndVerify = async () => {
+        // 1. 临时保存路径到状态
+        const pathToVerify = customHdcPath.trim();
+        if (!pathToVerify) {
+            setHdcValidationError('Please enter or select a path first.');
+            return;
+        }
+
         setIsValidatingHdc(true);
         setHdcValidationError('');
-        handleSave();
-        const { success, error } = await refreshDevices();
-        setIsValidatingHdc(false);
-        if (!success) {
-            if (error && error.includes('configured shell scope')) {
-                setHdcValidationError('Scope Error: Path not allowed. Ensure "hdc-scope" is added to tauri.conf.json capabilities list and RESTART app.');
+        setHdcValidationSuccess(false);
+
+        try {
+            // 2. 尝试使用该路径执行简单命令
+            // 注意：这里我们直接调用 Command.create，因为 getHdcCommand 依赖 workingCmd
+            const cmdString = `"${pathToVerify}" list targets`;
+            const command = Command.create('sh', ['-c', cmdString]);
+            const res = await command.execute();
+
+            if (res.code === 0) {
+                // 3. 验证成功，正式保存并更新 workingCmd
+                setWorkingCmd(pathToVerify);
+                handleSave();
+                setHdcValidationSuccess(true);
+                setLogs(prev => [...prev, `HDC path verified: ${pathToVerify}`]);
+                refreshDevices(); // 顺便刷新设备列表
             } else {
-                setHdcValidationError(error || 'Verification failed. Please check the path, permissions, or system logs.');
+                // 4. 验证失败
+                setHdcValidationError(res.stderr || `Execution failed with code ${res.code}`);
             }
+        } catch (e: any) {
+            setHdcValidationError(e.toString());
+        } finally {
+            setIsValidatingHdc(false);
         }
     };
 
@@ -1027,10 +1041,9 @@ const HdcRunner = () => {
                         </div>
                     )}
 
-                    {/* Tab 2: Device Mode (New) */}
+                    {/* Tab 2: Device Mode */}
                     {activeTab === 'device' && (
                         <div className="absolute inset-0 flex flex-col overflow-y-auto p-6 space-y-6">
-                            {/* Runtime 配置 (复用) */}
                             <div className={`${bgCard} p-5 rounded-xl border ${borderCol} shadow-sm`}>
                                 <div className="flex items-center justify-between mb-4">
                                     <h3 className={`text-xs font-bold ${textSub} uppercase tracking-wider`}>Runtime Config</h3>
@@ -1060,11 +1073,9 @@ const HdcRunner = () => {
                                 </div>
                             </div>
 
-                            {/* Device Mode 专属参数 */}
                             <div className={`${bgCard} p-5 rounded-xl border ${borderCol} shadow-sm`}>
                                 <h3 className={`text-xs font-bold ${textSub} uppercase tracking-wider mb-4`}>Device Mode Params</h3>
                                 <div className="space-y-4">
-                                    {/* Entry 参数显示 (只读, 固定为 Device) */}
                                     <div className="space-y-1">
                                         <label className={`text-xs ${textSub} ml-1`}>Entry</label>
                                         <input
@@ -1122,7 +1133,6 @@ const HdcRunner = () => {
                                                             </td>
                                                             <td className="p-3 text-right pr-4">
                                                                 <div className="flex justify-end space-x-2" onClick={e => e.stopPropagation()}>
-                                                                    {/* 启动按钮 */}
                                                                     {app.abilityName && (
                                                                         <button 
                                                                             onClick={() => launchApp(app.name, app.abilityName!)} 
@@ -1183,7 +1193,11 @@ const HdcRunner = () => {
                                         <input 
                                             type="text" 
                                             value={customHdcPath} 
-                                            onChange={(e) => setCustomHdcPath(e.target.value)}
+                                            onChange={(e) => {
+                                                setCustomHdcPath(e.target.value);
+                                                setHdcValidationSuccess(false);
+                                                setHdcValidationError('');
+                                            }}
                                             placeholder="/path/to/hdc"
                                             className={`flex-1 ${inputBg} border ${inputBorder} rounded p-2 text-sm outline-none focus:border-blue-500`}
                                         />
@@ -1192,9 +1206,26 @@ const HdcRunner = () => {
                                         </button>
                                     </div>
                                 </div>
-                                <div className="flex justify-end pt-4">
-                                    <button onClick={handleSave} className={`flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm transition shadow-lg shadow-blue-900/20`}>
-                                        <Save size={16} /> <span>Save Configuration</span>
+                                <div className="flex items-center justify-between pt-4">
+                                    <div className="flex-1 mr-4">
+                                        {hdcValidationError && (
+                                            <div className="flex items-center gap-2 text-red-500 text-xs animate-in fade-in slide-in-from-left-2">
+                                                <AlertTriangle size={14} /> {hdcValidationError}
+                                            </div>
+                                        )}
+                                        {hdcValidationSuccess && (
+                                            <div className="flex items-center gap-2 text-green-500 text-xs animate-in fade-in slide-in-from-left-2">
+                                                <CheckCircle2 size={14} /> Path verified and saved successfully!
+                                            </div>
+                                        )}
+                                    </div>
+                                    <button 
+                                        onClick={handleSaveAndVerify} 
+                                        disabled={isValidatingHdc}
+                                        className={`flex items-center space-x-2 px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium transition shadow-lg shadow-blue-900/20 ${isValidatingHdc ? 'opacity-70 cursor-wait' : ''}`}
+                                    >
+                                        {isValidatingHdc ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+                                        <span>{isValidatingHdc ? 'Verifying...' : 'Save & Verify'}</span>
                                     </button>
                                 </div>
                             </div>
@@ -1230,7 +1261,7 @@ const HdcRunner = () => {
 
                 </div>
 
-                {/* 底部操作栏 (仅在 Runner 和 Device Tab 显示) */}
+                {/* 底部操作栏 */}
                 {(activeTab === 'runner' || activeTab === 'device') && (
                     <div className={`${bgHeader} border-t ${borderCol} p-4 transition-colors duration-300`}>
                         <div className="mb-3">
@@ -1322,7 +1353,7 @@ const HdcRunner = () => {
                         <div className="flex justify-end gap-3">
                             <button onClick={() => setShowHdcMissingModal(false)} className={`px-4 py-2 rounded text-sm ${textSub} hover:bg-gray-800/20`} disabled={isValidatingHdc}>Cancel</button>
                             <button 
-                                onClick={handleSaveAndRetry} 
+                                onClick={handleSaveAndVerify}
                                 disabled={isValidatingHdc}
                                 className={`px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium shadow-lg shadow-blue-900/20 flex items-center gap-2 ${isValidatingHdc ? 'opacity-70 cursor-wait' : ''}`}
                             >
