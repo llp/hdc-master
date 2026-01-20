@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Upload, AppWindow, Trash, Settings, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight, Edit2, Copy, Monitor } from 'lucide-react';
+import { Play, RefreshCw, Terminal, Save, Trash2, Smartphone, Plus, X, Link, Unlink, Upload, AppWindow, Trash, Settings, Moon, Sun, PlusCircle, MinusCircle, Eraser, ChevronDown, ChevronRight, Edit2, Copy, Monitor, Info, FolderOpen, AlertTriangle } from 'lucide-react';
 import { Command } from '@tauri-apps/plugin-shell'; // V2 核心导入
 import { open, confirm as tauriConfirm } from '@tauri-apps/plugin-dialog'; // 引入 tauriConfirm
 import { generatePreviewCommand, generateUriParam } from '../utils/cmdHelper';
@@ -26,7 +26,7 @@ interface KeyValueParam {
 
 const HdcRunner = () => {
     // --- 状态管理 ---
-    const [activeTab, setActiveTab] = useState<'runner' | 'apps' | 'device' | 'settings'>('runner');
+    const [activeTab, setActiveTab] = useState<'runner' | 'apps' | 'device' | 'settings' | 'about'>('runner');
     const [devices, setDevices] = useState<Device[]>([]);
     const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
     const [newDeviceIp, setNewDeviceIp] = useState('');
@@ -64,6 +64,18 @@ const HdcRunner = () => {
     
     // Key-Value Params 管理
     const [kvParams, setKvParams] = useState<KeyValueParam[]>([{ key: 'key', value: 'value' }]);
+    
+    // HDC 路径配置
+    const [customHdcPath, setCustomHdcPath] = useState<string>(() => {
+        try {
+            const saved = localStorage.getItem('hdc_runner_config');
+            if (saved) {
+                return JSON.parse(saved).customHdcPath || '';
+            }
+        } catch (e) {}
+        return '';
+    });
+    const [showHdcMissingModal, setShowHdcMissingModal] = useState(false);
 
     // 计算 entry 参数
     // 逻辑：
@@ -168,7 +180,11 @@ const HdcRunner = () => {
             setLogs(prev => [...prev, '> Listing devices...']);
             
             // 优先使用已知工作的命令
-            let commandsToTry = workingCmd ? [workingCmd] : ['hdc-sidecar', 'hdc-deveco', 'hdc', 'hdc-local', 'hdc-brew'];
+            let commandsToTry = workingCmd ? [workingCmd] : [];
+            if (!workingCmd) {
+                if (customHdcPath) commandsToTry.push(customHdcPath);
+                commandsToTry.push('hdc-sidecar', 'hdc-deveco', 'hdc', 'hdc-local', 'hdc-brew');
+            }
             
             let output: any = null;
             let successCmd = '';
@@ -181,6 +197,7 @@ const HdcRunner = () => {
                         output = res;
                         successCmd = cmdName;
                         if (!workingCmd) setWorkingCmd(cmdName); // 缓存成功的命令
+                        setShowHdcMissingModal(false); // 成功找到，关闭弹窗
                         break; 
                     }
                 } catch (e) {
@@ -205,6 +222,9 @@ const HdcRunner = () => {
                 setLogs(prev => [...prev, `Error listing devices: No hdc command found or execution failed.`]);
                 // 如果失败了，清除缓存，下次重试所有
                 if (workingCmd) setWorkingCmd('');
+                if (!workingCmd) {
+                    setShowHdcMissingModal(true);
+                }
             }
         } catch (error) {
             setLogs(prev => [...prev, `Error listing devices: ${error}`]);
@@ -216,7 +236,11 @@ const HdcRunner = () => {
         try {
             setLogs(prev => [...prev, `> Connecting to ${ip}...`]);
             
-            let commandsToTry = workingCmd ? [workingCmd] : ['hdc-sidecar', 'hdc-deveco', 'hdc', 'hdc-local', 'hdc-brew'];
+            let commandsToTry = workingCmd ? [workingCmd] : [];
+            if (!workingCmd) {
+                if (customHdcPath) commandsToTry.push(customHdcPath);
+                commandsToTry.push('hdc-sidecar', 'hdc-deveco', 'hdc', 'hdc-local', 'hdc-brew');
+            }
             let success = false;
 
              for (const cmdName of commandsToTry) {
@@ -269,7 +293,11 @@ const HdcRunner = () => {
         setLogs(prev => [...prev, '> Fetching app list...']);
         try {
             let rawOutput = '';
-            let commandsToTry = workingCmd ? [workingCmd] : ['hdc-sidecar', 'hdc-deveco', 'hdc', 'hdc-local', 'hdc-brew'];
+            let commandsToTry = workingCmd ? [workingCmd] : [];
+            if (!workingCmd) {
+                if (customHdcPath) commandsToTry.push(customHdcPath);
+                commandsToTry.push('hdc-sidecar', 'hdc-deveco', 'hdc', 'hdc-local', 'hdc-brew');
+            }
             
             let output: any = null;
             // let currentCmd = '';
@@ -614,7 +642,7 @@ const HdcRunner = () => {
     const handleSave = () => {
         // 保存当前配置到 localStorage
         const config = {
-            bundleName, abilityName, pkgName, pkgVersion, selectedUriType, customUri, isDebug, extraParams, kvParams
+            bundleName, abilityName, pkgName, pkgVersion, selectedUriType, customUri, isDebug, extraParams, kvParams, customHdcPath
         };
         localStorage.setItem('hdc_runner_config', JSON.stringify(config));
         setLogs(prev => [...prev, 'Configuration saved.']);
@@ -635,11 +663,23 @@ const HdcRunner = () => {
                 if (config.isDebug !== undefined) setIsDebug(config.isDebug);
                 if (config.extraParams) setExtraParams(config.extraParams);
                 if (config.kvParams) setKvParams(config.kvParams);
+                if (config.customHdcPath) setCustomHdcPath(config.customHdcPath);
             } catch (e) {
                 console.error('Failed to load config', e);
             }
         }
     }, []);
+
+    const handleBrowseHdcPath = async () => {
+        const selected = await open({
+            multiple: false,
+            directory: false,
+            title: 'Select HDC Executable'
+        });
+        if (selected && typeof selected === 'string') {
+            setCustomHdcPath(selected);
+        }
+    };
 
     // --- 样式定义 (基于 Theme) ---
     const isDark = theme === 'dark';
@@ -694,9 +734,16 @@ const HdcRunner = () => {
                     <button 
                         onClick={() => setActiveTab('settings')}
                         className={`p-3 rounded-xl transition-all ${activeTab === 'settings' ? 'bg-gray-800 text-white' : `${textSub} hover:text-gray-400 hover:bg-gray-800/10`}`}
-                        title="Settings / About"
+                        title="Settings"
                     >
                         <Settings size={20} />
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('about')}
+                        className={`p-3 rounded-xl transition-all ${activeTab === 'about' ? 'bg-gray-800 text-white' : `${textSub} hover:text-gray-400 hover:bg-gray-800/10`}`}
+                        title="About"
+                    >
+                        <Info size={20} />
                     </button>
                 </div>
             </div>
@@ -1075,8 +1122,42 @@ const HdcRunner = () => {
                         </div>
                     )}
 
-                    {/* Tab 3: Settings / About */}
+                    {/* Tab 4: Settings */}
                     {activeTab === 'settings' && (
+                        <div className="absolute inset-0 flex flex-col p-6 space-y-6 overflow-y-auto">
+                            <h2 className={`text-lg font-bold ${textMain} flex items-center gap-2`}>
+                                <Settings size={20} /> Settings
+                            </h2>
+                            
+                            <div className={`${bgCard} p-5 rounded-xl border ${borderCol} shadow-sm space-y-4`}>
+                                <h3 className={`text-xs font-bold ${textSub} uppercase tracking-wider`}>Environment</h3>
+                                <div className="space-y-2">
+                                    <label className={`text-sm ${textMain} font-medium`}>Custom HDC Path</label>
+                                    <p className={`text-xs ${textSub}`}>Specify the full path to the hdc executable if it's not in your PATH.</p>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            value={customHdcPath} 
+                                            onChange={(e) => setCustomHdcPath(e.target.value)}
+                                            placeholder="/path/to/hdc"
+                                            className={`flex-1 ${inputBg} border ${inputBorder} rounded p-2 text-sm outline-none focus:border-blue-500`}
+                                        />
+                                        <button onClick={handleBrowseHdcPath} className={`px-3 py-2 ${isDark ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-200 hover:bg-gray-300'} rounded text-sm ${textSub} transition flex items-center gap-2`}>
+                                            <FolderOpen size={16} /> Browse
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex justify-end pt-4">
+                                    <button onClick={handleSave} className={`flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm transition shadow-lg shadow-blue-900/20`}>
+                                        <Save size={16} /> <span>Save Configuration</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Tab 5: About */}
+                    {activeTab === 'about' && (
                         <div className="absolute inset-0 flex flex-col p-6 items-center justify-center text-center">
                             <div className={`${bgCard} p-8 rounded-2xl border ${borderCol} max-w-md w-full shadow-lg`}>
                                 <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-900/30">
@@ -1164,6 +1245,37 @@ const HdcRunner = () => {
                     ))}
                 </div>
             </div>
+
+            {/* HDC Missing Modal */}
+            {showHdcMissingModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className={`${bgCard} p-6 rounded-xl border ${borderCol} shadow-2xl max-w-lg w-full mx-4`}>
+                        <div className="flex items-center gap-3 mb-4 text-amber-500">
+                            <AlertTriangle size={28} />
+                            <h3 className="text-lg font-bold text-white">HDC Command Not Found</h3>
+                        </div>
+                        <p className={`text-sm ${textSub} mb-4`}>
+                            The <code>hdc</code> command could not be found in your system PATH. Please specify the path to the HDC executable manually.
+                        </p>
+                        <div className="flex gap-2 mb-6">
+                            <input 
+                                type="text" 
+                                value={customHdcPath} 
+                                onChange={(e) => setCustomHdcPath(e.target.value)}
+                                placeholder="/path/to/hdc"
+                                className={`flex-1 ${inputBg} border ${inputBorder} rounded p-2 text-sm outline-none focus:border-blue-500`}
+                            />
+                            <button onClick={handleBrowseHdcPath} className={`px-3 py-2 ${isDark ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-200 hover:bg-gray-300'} rounded text-sm ${textSub} transition flex items-center gap-2`}>
+                                <FolderOpen size={16} /> Browse
+                            </button>
+                        </div>
+                        <div className="flex justify-end gap-3">
+                            <button onClick={() => setShowHdcMissingModal(false)} className={`px-4 py-2 rounded text-sm ${textSub} hover:bg-gray-800/20`}>Cancel</button>
+                            <button onClick={() => { handleSave(); refreshDevices(); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium shadow-lg shadow-blue-900/20">Save & Retry</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
         </div>
     );
