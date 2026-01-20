@@ -81,8 +81,7 @@ const HdcRunner = () => {
     const [hdcValidationSuccess, setHdcValidationSuccess] = useState(false);
 
     // 计算 entry 参数
-    const entryParam = selectedUriType === '192.168.0.100' ? 'Debug' : 'Application';
-
+    const entryParam = activeTab === 'device' ? 'Device' : (selectedUriType === '192.168.0.100' ? 'Debug' : 'Application');
     // 日志
     const [logs, setLogs] = useState<string[]>(['Ready.']);
 
