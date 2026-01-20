@@ -35,6 +35,12 @@
           "cmd": "/opt/homebrew/bin/hdc",
           "args": true,
           "sidecar": false
+        },
+        {
+          "name": "sh",
+          "cmd": "/bin/sh",
+          "args": true,
+          "sidecar": false
         }
       ]
     },
@@ -62,6 +68,12 @@
         {
           "name": "hdc-brew",
           "cmd": "/opt/homebrew/bin/hdc",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "sh",
+          "cmd": "/bin/sh",
           "args": true,
           "sidecar": false
         }
