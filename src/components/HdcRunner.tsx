@@ -710,7 +710,11 @@ const HdcRunner = () => {
         const { success, error } = await refreshDevices();
         setIsValidatingHdc(false);
         if (!success) {
-            setHdcValidationError(error || 'Verification failed. Please check the path, permissions, or system logs.');
+            if (error && error.includes('configured shell scope')) {
+                setHdcValidationError('Scope Error: Path not allowed. Please add capability for "^/.*hdc$" in src-tauri/capabilities.');
+            } else {
+                setHdcValidationError(error || 'Verification failed. Please check the path, permissions, or system logs.');
+            }
         }
     };
 
