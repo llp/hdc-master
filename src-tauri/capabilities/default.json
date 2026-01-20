@@ -25,10 +25,14 @@
           "sidecar": false
         },
         {
-          "name": "hdc-custom-path",
-          "cmd": {
-            "regex": "^/.*hdc$"
-          },
+          "name": "hdc-local",
+          "cmd": "/usr/local/bin/hdc",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "hdc-brew",
+          "cmd": "/opt/homebrew/bin/hdc",
           "args": true,
           "sidecar": false
         }
@@ -50,10 +54,14 @@
           "sidecar": false
         },
         {
-          "name": "hdc-custom-path",
-          "cmd": {
-            "regex": "^/.*hdc$"
-          },
+          "name": "hdc-local",
+          "cmd": "/usr/local/bin/hdc",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "hdc-brew",
+          "cmd": "/opt/homebrew/bin/hdc",
           "args": true,
           "sidecar": false
         }
