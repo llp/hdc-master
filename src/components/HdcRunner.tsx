@@ -76,6 +76,8 @@ const HdcRunner = () => {
         return '';
     });
     const [showHdcMissingModal, setShowHdcMissingModal] = useState(false);
+    const [isValidatingHdc, setIsValidatingHdc] = useState(false);
+    const [hdcValidationError, setHdcValidationError] = useState('');
 
     // 计算 entry 参数
     // 逻辑：
@@ -175,19 +177,22 @@ const HdcRunner = () => {
         return Command.create(cmdName, args);
     };
 
-    const refreshDevices = async () => {
+    const refreshDevices = async (): Promise<{ success: boolean; error?: string }> => {
         try {
             setLogs(prev => [...prev, '> Listing devices...']);
             
             // 优先使用已知工作的命令
             let commandsToTry = workingCmd ? [workingCmd] : [];
+            const trimmedCustomPath = customHdcPath.trim();
             if (!workingCmd) {
-                if (customHdcPath) commandsToTry.push(customHdcPath);
+                if (trimmedCustomPath) commandsToTry.push(trimmedCustomPath);
                 commandsToTry.push('hdc-sidecar', 'hdc-deveco', 'hdc', 'hdc-local', 'hdc-brew');
             }
             
             let output: any = null;
             let successCmd = '';
+            let lastError = '';
+            let customPathError = '';
 
             for (const cmdName of commandsToTry) {
                 try {
@@ -198,9 +203,20 @@ const HdcRunner = () => {
                         successCmd = cmdName;
                         if (!workingCmd) setWorkingCmd(cmdName); // 缓存成功的命令
                         setShowHdcMissingModal(false); // 成功找到，关闭弹窗
+                        setHdcValidationError('');
                         break; 
                     }
-                } catch (e) {
+                    const err = res.stderr || `Exit code ${res.code}`;
+                    lastError = err;
+                    if (trimmedCustomPath && cmdName === trimmedCustomPath) {
+                        customPathError = err;
+                    }
+                } catch (e: any) {
+                    const err = e.toString();
+                    lastError = err;
+                    if (trimmedCustomPath && cmdName === trimmedCustomPath) {
+                        customPathError = err;
+                    }
                     // console.log(`Failed to execute ${cmdName}:`, e);
                 }
             }
@@ -218,16 +234,20 @@ const HdcRunner = () => {
                     setSelectedDeviceId(foundDevices[0].id);
                 }
                 setLogs(prev => [...prev, `Found ${foundDevices.length} devices (via ${successCmd}).`]);
+                return { success: true };
             } else {
-                setLogs(prev => [...prev, `Error listing devices: No hdc command found or execution failed.`]);
+                const finalError = customPathError || lastError;
+                setLogs(prev => [...prev, `Error listing devices: No hdc command found or execution failed. Last error: ${finalError}`]);
                 // 如果失败了，清除缓存，下次重试所有
                 if (workingCmd) setWorkingCmd('');
                 if (!workingCmd) {
                     setShowHdcMissingModal(true);
                 }
+                return { success: false, error: finalError };
             }
         } catch (error) {
             setLogs(prev => [...prev, `Error listing devices: ${error}`]);
+            return { success: false, error: String(error) };
         }
     };
 
@@ -237,8 +257,9 @@ const HdcRunner = () => {
             setLogs(prev => [...prev, `> Connecting to ${ip}...`]);
             
             let commandsToTry = workingCmd ? [workingCmd] : [];
+            const trimmedCustomPath = customHdcPath.trim();
             if (!workingCmd) {
-                if (customHdcPath) commandsToTry.push(customHdcPath);
+                if (trimmedCustomPath) commandsToTry.push(trimmedCustomPath);
                 commandsToTry.push('hdc-sidecar', 'hdc-deveco', 'hdc', 'hdc-local', 'hdc-brew');
             }
             let success = false;
@@ -294,8 +315,9 @@ const HdcRunner = () => {
         try {
             let rawOutput = '';
             let commandsToTry = workingCmd ? [workingCmd] : [];
+            const trimmedCustomPath = customHdcPath.trim();
             if (!workingCmd) {
-                if (customHdcPath) commandsToTry.push(customHdcPath);
+                if (trimmedCustomPath) commandsToTry.push(trimmedCustomPath);
                 commandsToTry.push('hdc-sidecar', 'hdc-deveco', 'hdc', 'hdc-local', 'hdc-brew');
             }
             
@@ -678,6 +700,17 @@ const HdcRunner = () => {
         });
         if (selected && typeof selected === 'string') {
             setCustomHdcPath(selected);
+        }
+    };
+
+    const handleSaveAndRetry = async () => {
+        setIsValidatingHdc(true);
+        setHdcValidationError('');
+        handleSave();
+        const { success, error } = await refreshDevices();
+        setIsValidatingHdc(false);
+        if (!success) {
+            setHdcValidationError(error || 'Verification failed. Please check the path, permissions, or system logs.');
         }
     };
 
@@ -1257,6 +1290,11 @@ const HdcRunner = () => {
                         <p className={`text-sm ${textSub} mb-4`}>
                             The <code>hdc</code> command could not be found in your system PATH. Please specify the path to the HDC executable manually.
                         </p>
+                        {hdcValidationError && (
+                            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded text-red-500 text-xs break-all">
+                                {hdcValidationError}
+                            </div>
+                        )}
                         <div className="flex gap-2 mb-6">
                             <input 
                                 type="text" 
@@ -1270,8 +1308,15 @@ const HdcRunner = () => {
                             </button>
                         </div>
                         <div className="flex justify-end gap-3">
-                            <button onClick={() => setShowHdcMissingModal(false)} className={`px-4 py-2 rounded text-sm ${textSub} hover:bg-gray-800/20`}>Cancel</button>
-                            <button onClick={() => { handleSave(); refreshDevices(); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium shadow-lg shadow-blue-900/20">Save & Retry</button>
+                            <button onClick={() => setShowHdcMissingModal(false)} className={`px-4 py-2 rounded text-sm ${textSub} hover:bg-gray-800/20`} disabled={isValidatingHdc}>Cancel</button>
+                            <button 
+                                onClick={handleSaveAndRetry} 
+                                disabled={isValidatingHdc}
+                                className={`px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm font-medium shadow-lg shadow-blue-900/20 flex items-center gap-2 ${isValidatingHdc ? 'opacity-70 cursor-wait' : ''}`}
+                            >
+                                {isValidatingHdc && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                                {isValidatingHdc ? 'Checking...' : 'Save & Retry'}
+                            </button>
                         </div>
                     </div>
                 </div>
