@@ -174,6 +174,65 @@ const HdcRunner = () => {
         if (cmdName === 'hdc-sidecar') {
             return Command.sidecar('hdc', args);
         }
+        // 如果是自定义路径，使用 hdc-custom 权限
+        if (cmdName === customHdcPath && customHdcPath) {
+             // 注意：这里我们假设 capabilities 中配置了允许执行任意路径或者特定路径
+             // 但 Tauri v2 严格限制了 scope。
+             // 如果用户输入了 /path/to/hdc，我们需要在 capabilities 中配置对应的 scope
+             // 或者使用一个通用的 identifier 比如 'hdc-custom' 并在代码中动态指定 cmd？
+             // 不，Tauri v2 的 permissions 是静态的。
+             // 唯一的办法是让用户在 capabilities 中预先配置好，或者我们提供一个通用的 'hdc-custom' 
+             // 但 cmd 必须在 json 中写死。
+             // 这是一个难题。Tauri v2 不允许动态执行任意路径的二进制文件，除非它是 sidecar 或者在 allow list 中。
+             
+             // 变通方案：
+             // 我们无法真正做到让用户随意选择任意路径并执行，除非我们使用 sidecar。
+             // 但如果用户想用自己的 hdc，我们可以尝试将其作为参数传递给 shell？
+             // 不行。
+             
+             // 唯一的解法是：
+             // 1. 推荐用户使用 Sidecar (我们打包好的)。
+             // 2. 如果用户非要用自己的，他们必须把自己的 hdc 放到我们指定的某个目录下，或者我们提供一个配置项
+             // 让我们在 capabilities 中添加一个允许执行 /usr/local/bin/hdc 等常见路径的配置。
+             // 对于完全自定义的路径，Tauri v2 目前比较严格。
+             
+             // 但是，我们可以尝试使用 'hdc-custom' 并在 execute 时覆盖 cmd？
+             // 不，Command.create 的第一个参数是 identifier，它映射到 capabilities 中的配置。
+             // 我们不能动态修改 cmd。
+             
+             // 等等，如果我们在 capabilities 中配置了 cmd 为绝对路径，那是可以的。
+             // 但用户输入的路径是动态的。
+             
+             // 也许我们可以利用 shell scope？
+             // 如果我们允许执行 `sh` 或 `bash`，然后把 hdc 路径作为参数传进去？
+             // 这需要 `shell:allow-execute` 允许 `sh`。
+             
+             // 让我们先尝试直接用 Command.create(customHdcPath, args)。
+             // 这通常会失败，因为 customHdcPath 没有在 capabilities 中定义。
+             
+             // 实际上，如果用户输入的路径恰好匹配了我们在 capabilities 中预定义的某个 cmd (比如 /usr/local/bin/hdc)，那就可以。
+             // 但如果是任意路径，Tauri v2 会拦截。
+             
+             // 鉴于此，我们只能尽力而为：
+             // 1. 尝试匹配预定义的 identifier。
+             // 2. 如果都不行，提示用户将 hdc 放到标准路径或使用 sidecar。
+             
+             // 但为了满足需求“让用户选择文件夹”，我们可以尝试一种 hack：
+             // 我们在 capabilities 中定义一个通用的 `hdc-custom`，cmd 为空字符串？不行。
+             
+             // 重新思考：Tauri v2 的 `shell` 插件允许配置 scope。
+             // 我们可以配置一个允许执行任意 `/` 开头的命令的 scope 吗？
+             // { "name": "run-any", "cmd": "sh", "args": ["-c", "$1", "--", "$2..."] }
+             
+             // 让我们先按常规逻辑写，如果路径未授权，Tauri 会抛错，我们在 UI 上提示。
+             // 实际上，最简单的办法是告诉用户：请把 hdc 放到 /usr/local/bin/ 下，或者使用我们内置的。
+             
+             // 但为了尝试支持，我们假设用户输入的路径可能在我们的 allow list 中。
+             // 或者我们使用 `sh -c "/path/to/hdc ..."` 的方式（需要允许 sh）。
+             
+             // 这里我们先尝试直接调用，如果报错就报错。
+             return Command.create(cmdName, args);
+        }
         return Command.create(cmdName, args);
     };
 
@@ -711,7 +770,7 @@ const HdcRunner = () => {
         setIsValidatingHdc(false);
         if (!success) {
             if (error && error.includes('configured shell scope')) {
-                setHdcValidationError('Scope Error: Path not allowed. Please add capability for "^/.*hdc$" in src-tauri/capabilities.');
+                setHdcValidationError('Scope Error: Path not allowed. Ensure "hdc-scope" is added to tauri.conf.json capabilities list and RESTART app.');
             } else {
                 setHdcValidationError(error || 'Verification failed. Please check the path, permissions, or system logs.');
             }
