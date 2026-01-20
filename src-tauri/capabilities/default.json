@@ -23,6 +23,12 @@
           "cmd": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc",
           "args": true,
           "sidecar": false
+        },
+        {
+          "name": "hdc-custom",
+          "cmd": "",
+          "args": true,
+          "sidecar": false
         }
       ]
     },
@@ -38,6 +44,12 @@
         {
           "name": "hdc-deveco",
           "cmd": "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc",
+          "args": true,
+          "sidecar": false
+        },
+        {
+          "name": "hdc-custom",
+          "cmd": "",
           "args": true,
           "sidecar": false
         }

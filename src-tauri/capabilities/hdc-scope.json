@@ -2,7 +2,7 @@
   "identifier": "hdc-scope",
   "description": "Allow executing HDC from custom paths",
   "local": true,
-  "windows": ["main"],
+  "windows": ["*"],
   "permissions": [
     {
       "identifier": "shell:allow-execute",
